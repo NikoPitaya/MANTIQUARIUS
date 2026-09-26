@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Film, Plus, Pencil, Trash2, Upload, MonitorUp, Square, TriangleAlert, Clapperboard, X,
+  Image as ImageIcon,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToUint8, stripExt, uid } from "../lib/ordo";
@@ -17,7 +18,7 @@ type Phase = "idle" | "loading" | "gesture" | "playing" | "error";
 const POPUP_CSS = `
   html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}
   #stage{position:fixed;inset:0;background:#000}
-  video{width:100%;height:100%;object-fit:contain;background:#000;outline:none;display:block}
+  video,img{width:100%;height:100%;object-fit:contain;background:#000;outline:none;display:block}
   #overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;pointer-events:none;font-family:'JetBrains Mono',ui-monospace,monospace}
   #overlay .box{display:flex;flex-direction:column;align-items:center;gap:12px;background:rgba(0,0,0,.55);padding:22px 30px;border-radius:16px}
   .spin{width:26px;height:26px;border-radius:50%;border:3px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.9);animation:sp .8s linear infinite}
@@ -34,6 +35,8 @@ const POPUP_CSS = `
   .card .m{color:#d4d4d4;font-size:12px;line-height:1.7;margin-bottom:8px}
   .card .f{color:#777;font-size:10px;letter-spacing:.06em;word-break:break-all}
 `;
+
+const isImage = (m: OrdoMedia): boolean => m.data.startsWith("data:image");
 
 const esc = (s: string): string =>
   s.replace(
@@ -81,7 +84,7 @@ function VideoPanelInner({ videos, onChange }: Props) {
   const [panelError, setPanelError] = useState<string | null>(null);
 
   const winRef = useRef<Window | null>(null);
-  const currentVideoEl = useRef<HTMLVideoElement | null>(null);
+  const currentVideoEl = useRef<HTMLVideoElement | HTMLImageElement | null>(null);
   const currentUrl = useRef<string | null>(null);
   const blobCache = useRef(new Map<string, Blob>());
   const inputRef = useRef<HTMLInputElement>(null);
@@ -162,7 +165,8 @@ function VideoPanelInner({ videos, onChange }: Props) {
   }, []);
 
   const stop = useCallback(() => {
-    currentVideoEl.current?.pause();
+    const el = currentVideoEl.current;
+    if (el && "pause" in el) el.pause();
     currentVideoEl.current = null;
     revokeUrl();
     const w = winRef.current;
@@ -203,12 +207,35 @@ function VideoPanelInner({ videos, onChange }: Props) {
       // blob é passado para a janela e a URL é criada lá dentro — o mais robusto possível
       const blob = getBlob(media);
       if (blob.size === 0) {
-        setOverlay(w, errHtml("o arquivo de vídeo está vazio.", media.name));
+        setOverlay(w, errHtml("o arquivo está vazio.", media.name));
         setPhase("error");
         return;
       }
       const url = (w as unknown as { URL: typeof URL }).URL.createObjectURL(blob);
       currentUrl.current = url;
+
+      // ---- imagens: mesmo fluxo, só que sem player ----
+      if (isImage(media)) {
+        const img = w.document.createElement("img");
+        img.src = url;
+        img.alt = media.name;
+        img.addEventListener("load", () => {
+          if (currentVideoEl.current !== img) return;
+          setOverlay(w, "");
+          setPhase("playing");
+          setPanelError(null);
+        });
+        img.addEventListener("error", () => {
+          if (currentVideoEl.current !== img) return;
+          setOverlay(w, errHtml("não foi possível exibir esta imagem.", media.name));
+          setPhase("error");
+          setPanelError("a imagem não pôde ser exibida — detalhes na janela.");
+        });
+        stage.appendChild(img);
+        currentVideoEl.current = img;
+        setPlayingId(id);
+        return;
+      }
 
       const v = w.document.createElement("video");
       v.src = url;
@@ -277,7 +304,10 @@ function VideoPanelInner({ videos, onChange }: Props) {
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files).filter(
-      (f) => f.type.startsWith("video/") || /\.(mp4|mkv|webm|mov|avi|m4v|ogv|wmv)$/i.test(f.name)
+      (f) =>
+        f.type.startsWith("video/") ||
+        f.type.startsWith("image/") ||
+        /\.(mp4|mkv|webm|mov|avi|m4v|ogv|wmv|png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(f.name)
     );
     if (list.length === 0) return;
     const items: OrdoMedia[] = [];
@@ -335,14 +365,14 @@ function VideoPanelInner({ videos, onChange }: Props) {
       actions={
         <>
           {playingId && (
-            <HeaderIconBtn title="parar vídeo" onClick={stop}>
+            <HeaderIconBtn title="parar exibição" onClick={stop}>
               <Square size={11} />
             </HeaderIconBtn>
           )}
           <HeaderIconBtn title={popupOpen ? "focar janela de vídeo" : "abrir janela de vídeo"} onClick={focusPopup} accent={popupOpen}>
             <MonitorUp size={12.5} />
           </HeaderIconBtn>
-          <HeaderIconBtn title="adicionar vídeo" onClick={() => inputRef.current?.click()} accent>
+          <HeaderIconBtn title="adicionar vídeo ou imagem" onClick={() => inputRef.current?.click()} accent>
             <Plus size={13} strokeWidth={2.4} />
           </HeaderIconBtn>
         </>
@@ -366,9 +396,11 @@ function VideoPanelInner({ videos, onChange }: Props) {
                 <Upload size={20} strokeWidth={1.7} />
               </span>
               <span className="text-center">
-                <span className="block font-display text-sm font-semibold text-white">adicionar vídeo</span>
+                <span className="block font-display text-sm font-semibold text-white">
+                  adicionar vídeo ou imagem
+                </span>
                 <span className="mt-1 block font-mono text-[9.5px] uppercase leading-relaxed tracking-[0.16em] text-carbon-400">
-                  toca na janela externa
+                  exibe na janela externa
                   <br />
                   tela preta quando parado
                 </span>
@@ -403,7 +435,13 @@ function VideoPanelInner({ videos, onChange }: Props) {
                 >
                   <button
                     onClick={() => play(m.id)}
-                    title={active ? "parar vídeo (monitor fica preto)" : "tocar na janela externa"}
+                    title={
+                      active
+                        ? "parar (monitor fica preto)"
+                        : isImage(m)
+                          ? "exibir na janela externa"
+                          : "tocar na janela externa"
+                    }
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90 ${
                       active
                         ? "bg-acid-400 text-carbon-950 shadow-[0_0_16px_rgba(212,247,76,0.35)]"
@@ -411,7 +449,13 @@ function VideoPanelInner({ videos, onChange }: Props) {
                     }`}
                   >
                     {active ? (
-                      <span className="eq text-carbon-950"><i /><i /><i /><i /></span>
+                      isImage(m) ? (
+                        <ImageIcon size={13.5} />
+                      ) : (
+                        <span className="eq text-carbon-950"><i /><i /><i /><i /></span>
+                      )
+                    ) : isImage(m) ? (
+                      <ImageIcon size={13.5} />
                     ) : (
                       <Clapperboard size={13.5} />
                     )}
@@ -486,7 +530,7 @@ function VideoPanelInner({ videos, onChange }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept="video/*"
+        accept="video/*,image/*"
         multiple
         className="hidden"
         onChange={(e) => {
