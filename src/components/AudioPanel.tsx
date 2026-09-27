@@ -4,14 +4,22 @@ import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToObjectURL, stripExt, uid } from "../lib/ordo";
 import { PanelChrome, HeaderIconBtn } from "./PanelChrome";
 import { ContextMenuView, useContextMenu } from "./ContextMenu";
+import { VolumeSlider } from "./VolumeSlider";
+import { lsGet, lsSet } from "../lib/store";
 
 interface Props {
   audios: OrdoMedia[];
   onChange: (audios: OrdoMedia[]) => void;
 }
 
+const readVol = (key: string): number => {
+  const raw = Number(lsGet(key));
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 1;
+};
+
 function AudioPanelInner({ audios, onChange }: Props) {
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [volume, setVolume] = useState(() => readVol("ordo:vol:audio"));
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,15 +32,27 @@ function AudioPanelInner({ audios, onChange }: Props) {
   const onChangeRef = useRef(onChange);
   useEffect(() => { onChangeRef.current = onChange; });
 
+  const volumeRef = useRef(volume);
+  useEffect(() => { volumeRef.current = volume; });
+
   const getEl = useCallback((m: OrdoMedia): HTMLAudioElement => {
     const cached = els.current.get(m.id);
     if (cached) return cached;
     const a = new Audio(dataURLToObjectURL(m.data));
     a.loop = true;
     a.preload = "auto";
+    a.volume = volumeRef.current;
     els.current.set(m.id, a);
     return a;
   }, []);
+
+  /* aplica o volume em todas as faixas já carregadas */
+  useEffect(() => {
+    els.current.forEach((a) => {
+      a.volume = volume;
+    });
+    lsSet("ordo:vol:audio", String(volume));
+  }, [volume]);
 
   const stop = useCallback((id: string) => {
     const a = els.current.get(id);
@@ -224,14 +244,19 @@ function AudioPanelInner({ audios, onChange }: Props) {
         )}
 
         {audios.length > 0 && (
-          <footer className="flex h-6 shrink-0 items-center border-t border-carbon-700/60 px-3">
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-carbon-500">
-              {audios.length} {audios.length === 1 ? "faixa" : "faixas"}{busy ? " · carregando" : ""}
-            </span>
-            <span className={`ml-auto font-mono text-[9.5px] uppercase tracking-[0.18em] ${playingId ? "text-acid-400" : "text-carbon-500"}`}>
-              {playingId ? "tocando" : "parado"}
-            </span>
-          </footer>
+          <>
+            <div className="shrink-0 border-t border-carbon-700/60 px-3 py-1.5">
+              <VolumeSlider value={volume} onChange={setVolume} title="volume das músicas" />
+            </div>
+            <footer className="flex h-6 shrink-0 items-center border-t border-carbon-700/60 px-3">
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-carbon-500">
+                {audios.length} {audios.length === 1 ? "faixa" : "faixas"}{busy ? " · carregando" : ""}
+              </span>
+              <span className={`ml-auto font-mono text-[9.5px] uppercase tracking-[0.18em] ${playingId ? "text-acid-400" : "text-carbon-500"}`}>
+                {playingId ? "tocando" : "parado"}
+              </span>
+            </footer>
+          </>
         )}
       </div>
 

@@ -250,6 +250,34 @@ input.nospin {
   appearance: textfield;
 }
 
+/* volume slider */
+.vol-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: var(--color-acid-400);
+  border: 2px solid var(--color-carbon-900);
+  box-shadow: 0 0 6px rgba(212, 247, 76, 0.45);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.vol-range::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+}
+.vol-range::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--color-acid-400);
+  border: 2px solid var(--color-carbon-900);
+  cursor: pointer;
+}
+.vol-range::-moz-range-track {
+  background: transparent;
+}
+
 /* pdf pages */
 .pdf-page {
   position: relative;

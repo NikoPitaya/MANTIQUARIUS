@@ -7,6 +7,8 @@ import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToUint8, stripExt, uid } from "../lib/ordo";
 import { PanelChrome, HeaderIconBtn } from "./PanelChrome";
 import { ContextMenuView, useContextMenu } from "./ContextMenu";
+import { VolumeSlider } from "./VolumeSlider";
+import { lsGet, lsSet } from "../lib/store";
 
 interface Props {
   videos: OrdoMedia[];
@@ -75,8 +77,14 @@ const tapHtml = () =>
 const errHtml = (msg: string, name: string) =>
   `<div class="card"><div class="t">falha ao reproduzir</div><div class="m">${esc(msg)}</div><div class="f">${esc(name)}</div></div>`;
 
+const readVol = (): number => {
+  const raw = Number(lsGet("ordo:vol:video"));
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 1;
+};
+
 function VideoPanelInner({ videos, onChange }: Props) {
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [volume, setVolume] = useState(readVol);
   const [phase, setPhase] = useState<Phase>("idle");
   const [popupOpen, setPopupOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -96,6 +104,17 @@ function VideoPanelInner({ videos, onChange }: Props) {
   useEffect(() => { onChangeRef.current = onChange; });
   const playingRef = useRef(playingId);
   useEffect(() => { playingRef.current = playingId; });
+  const volumeRef = useRef(volume);
+  useEffect(() => { volumeRef.current = volume; });
+
+  /* aplica o volume no vídeo que já está tocando na janela externa */
+  useEffect(() => {
+    const el = currentVideoEl.current;
+    if (el && "volume" in el) {
+      try { el.volume = volume; } catch { /* ignore */ }
+    }
+    lsSet("ordo:vol:video", String(volume));
+  }, [volume]);
 
   const getBlob = useCallback((m: OrdoMedia): Blob => {
     const c = blobCache.current.get(m.id);
@@ -243,6 +262,7 @@ function VideoPanelInner({ videos, onChange }: Props) {
       v.loop = true;
       v.playsInline = true;
       v.preload = "auto";
+      v.volume = volumeRef.current;
 
       const errText = (code?: number) => {
         const map: Record<number, string> = {
@@ -498,6 +518,12 @@ function VideoPanelInner({ videos, onChange }: Props) {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {videos.length > 0 && (
+          <div className="shrink-0 border-t border-carbon-700/60 px-3 py-1.5">
+            <VolumeSlider value={volume} onChange={setVolume} title="volume dos vídeos" />
           </div>
         )}
 
