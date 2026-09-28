@@ -46,42 +46,120 @@ function AudioPanelInner({ audios, onChange }: Props) {
     return a;
   }, []);
 
+  /* ---- fades ---- */
+  const fades = useRef(new Map<string, { raf: number; to: number }>());
+
+  const cancelFade = useCallback((id: string) => {
+    const f = fades.current.get(id);
+    if (f) {
+      cancelAnimationFrame(f.raf);
+      fades.current.delete(id);
+    }
+  }, []);
+
+  const fadeTo = useCallback(
+    (id: string, el: HTMLAudioElement, to: number, ms: number, done?: () => void) => {
+      cancelFade(id);
+      const from = el.volume;
+      if (ms <= 0 || Math.abs(to - from) < 0.005) {
+        el.volume = Math.max(0, Math.min(1, to));
+        done?.();
+        return;
+      }
+      const start = performance.now();
+      const step = (now: number) => {
+        const entry = fades.current.get(id);
+        const target = entry ? entry.to : to;
+        const t = Math.min(1, (now - start) / ms);
+        // curva suave (ease-in-out) para o fade soar natural
+        const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+        el.volume = Math.max(0, Math.min(1, from + (target - from) * eased));
+        if (t < 1) {
+          fades.current.set(id, { raf: requestAnimationFrame(step), to: target });
+        } else {
+          fades.current.delete(id);
+          done?.();
+        }
+      };
+      fades.current.set(id, { raf: requestAnimationFrame(step), to });
+    },
+    [cancelFade]
+  );
+
   /* aplica o volume em todas as faixas já carregadas */
   useEffect(() => {
-    els.current.forEach((a) => {
-      a.volume = volume;
+    els.current.forEach((a, id) => {
+      const f = fades.current.get(id);
+      if (f) {
+        // fade em andamento: só atualiza o alvo se for um fade-in
+        if (f.to > 0) f.to = volume;
+      } else {
+        a.volume = volume;
+      }
     });
     lsSet("ordo:vol:audio", String(volume));
   }, [volume]);
 
-  const stop = useCallback((id: string) => {
-    const a = els.current.get(id);
-    if (a) {
-      a.pause();
-      a.currentTime = 0; // reinicia do zero ao parar
-    }
-  }, []);
+  const FADE_MS = 900;
+
+  /** para imediatamente, sem fade (usado ao remover/desmontar) */
+  const hardStop = useCallback(
+    (id: string) => {
+      cancelFade(id);
+      const a = els.current.get(id);
+      if (a) {
+        a.pause();
+        a.currentTime = 0;
+      }
+    },
+    [cancelFade]
+  );
+
+  /** para com fade out e reinicia do zero ao terminar */
+  const fadeOutStop = useCallback(
+    (id: string) => {
+      const a = els.current.get(id);
+      if (!a) return;
+      fadeTo(id, a, 0, FADE_MS, () => {
+        a.pause();
+        a.currentTime = 0; // reinicia do zero ao parar
+        a.volume = volumeRef.current;
+      });
+    },
+    [fadeTo]
+  );
+
+  const stop = hardStop;
 
   const toggle = useCallback(
     (id: string) => {
       if (playingId === id) {
-        stop(id);
+        fadeOutStop(id); // parada manual também dá fade out
         setPlayingId(null);
         return;
       }
-      if (playingId) stop(playingId);
+      if (playingId) fadeOutStop(playingId); // a anterior sai em fade out
       const m = audiosRef.current.find((x) => x.id === id);
       if (!m) return;
       const a = getEl(m);
+      cancelFade(id);
       a.currentTime = 0;
-      a.play().catch(() => setPlayingId(null));
+      a.volume = 0; // e a nova entra em fade in
+      a.play()
+        .then(() => fadeTo(id, a, volumeRef.current, FADE_MS))
+        .catch(() => {
+          a.volume = volumeRef.current;
+          setPlayingId(null);
+        });
       setPlayingId(id);
     },
-    [playingId, getEl, stop]
+    [playingId, getEl, fadeOutStop, fadeTo, cancelFade]
   );
 
   useEffect(
     () => () => {
+      fades.current.forEach((f) => cancelAnimationFrame(f.raf));
+      fades.current.clear();
       els.current.forEach((a) => {
         a.pause();
         URL.revokeObjectURL(a.src);
@@ -227,7 +305,7 @@ function AudioPanelInner({ audios, onChange }: Props) {
                       className="min-w-0 flex-1 text-left"
                       title={m.name}
                     >
-                      <span className={`block truncate text-[12.5px] font-medium ${active ? "text-white" : "text-carbon-200"}`}>
+                      <span className={`block break-words text-[12.5px] font-medium leading-snug ${active ? "text-white" : "text-carbon-200"}`}>
                         {m.name}
                       </span>
                       {active && (

@@ -150,6 +150,7 @@ body {
 
 /* ---------- editor ---------- */
 .ws-editor {
+  position: relative;
   outline: none;
   direction: ltr;
   unicode-bidi: normal;
@@ -159,6 +160,29 @@ body {
   line-height: 1.75;
   color: var(--color-carbon-100);
   word-break: break-word;
+}
+
+/* imagens soltas dentro da nota (rolam junto com o conteúdo) */
+.ws-editor img.note-img {
+  position: absolute;
+  height: auto;
+  max-width: none;
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: move;
+  outline: 1.5px solid transparent;
+  transition: outline-color 0.12s ease, box-shadow 0.12s ease;
+}
+.ws-editor img.note-img:hover {
+  outline-color: rgba(212, 247, 76, 0.55);
+}
+.ws-editor img.note-img.selected {
+  outline-color: transparent;
+}
+.ws-editor img.note-img.dragging {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
 }
 .ws-editor:empty::before {
   content: attr(data-ph);
@@ -248,6 +272,43 @@ input.nospin::-webkit-inner-spin-button {
 input.nospin {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* quadro estilo canvas */
+.canvas-board {
+  touch-action: none;
+  background-color: var(--color-carbon-950);
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.075) 1px, transparent 1px);
+}
+.canvas-board textarea {
+  touch-action: auto;
+}
+
+/* imagens da nota não devem rolar a tela ao arrastar no toque */
+.ws-editor img.note-img {
+  touch-action: none;
+}
+
+/* ---------- mobile: um módulo por vez ---------- */
+@media (max-width: 1023px) {
+  .ws-main {
+    display: flex !important;
+    overflow: hidden !important;
+  }
+  .ws-main > section {
+    display: none;
+  }
+  .ws-main[data-active="0"] > section:nth-child(1),
+  .ws-main[data-active="1"] > section:nth-child(2),
+  .ws-main[data-active="2"] > section:nth-child(3),
+  .ws-main[data-active="3"] > section:nth-child(4),
+  .ws-main[data-active="4"] > section:nth-child(5) {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+  }
 }
 
 /* volume slider */

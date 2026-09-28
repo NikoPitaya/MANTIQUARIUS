@@ -75,6 +75,9 @@ export const parseDoc = (raw: string): OrdoDoc | null => {
         id: n.id,
         title: typeof n.title === "string" ? n.title : "nota",
         content: typeof n.content === "string" ? n.content : "",
+        mode: n.mode === "canvas" ? ("canvas" as const) : ("doc" as const),
+        canvas: Array.isArray(n.canvas) ? n.canvas : [],
+        view: n.view && typeof n.view === "object" ? n.view : undefined,
       }));
     if (notes.length === 0) return null;
     const activeNoteId =

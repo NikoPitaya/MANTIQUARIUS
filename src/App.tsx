@@ -18,8 +18,17 @@ import { AudioPanel } from "./components/AudioPanel";
 import { PdfPanel } from "./components/PdfPanel";
 import { VideoPanel } from "./components/VideoPanel";
 import { SaveModal } from "./components/SaveModal";
+import { NotebookPen, Dices, Music, FileText, Film } from "lucide-react";
 
 const AUTOSAVE_KEY = "ordo:autosave";
+
+const MODULES = [
+  { label: "notas", icon: NotebookPen },
+  { label: "owlbear", icon: Dices },
+  { label: "áudio", icon: Music },
+  { label: "pdf", icon: FileText },
+  { label: "vídeo", icon: Film },
+] as const;
 
 interface AutosaveMeta {
   name: string;
@@ -41,6 +50,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [exportState, setExportState] = useState<ExportState | null>(null);
+  const [activeModule, setActiveModule] = useState(0);
   const [homeError, setHomeError] = useState<string | null>(null);
   const [autosaveMeta, setAutosaveMeta] = useState<AutosaveMeta | null>(() => {
     try {
@@ -268,13 +278,35 @@ export default function App() {
         onSave={save}
         onClose={close}
       />
-      <main className="grid min-h-0 flex-1 auto-rows-[74vh] grid-cols-6 gap-2 overflow-y-auto p-2 lg:auto-rows-auto lg:grid-rows-2 lg:overflow-hidden">
+      <main
+        data-active={activeModule}
+        className="ws-main grid min-h-0 flex-1 grid-cols-6 grid-rows-2 gap-2 overflow-hidden p-2"
+      >
         <NotesPanel notes={doc.notes} activeId={doc.activeNoteId} onChange={handleNotes} />
         <OwlbearPanel opened={doc.owlbearOpened} onChange={handleOwlbear} />
         <AudioPanel audios={doc.audios} onChange={handleAudios} />
         <PdfPanel pdfs={doc.pdfs} activePdfId={doc.activePdfId} onChange={handlePdfs} />
         <VideoPanel videos={doc.videos} onChange={handleVideos} />
       </main>
+
+      {/* seletor de módulos — apenas no celular/tablet */}
+      <nav className="flex shrink-0 items-stretch gap-1 border-t border-carbon-700/80 bg-carbon-900/95 px-1.5 py-1.5 backdrop-blur lg:hidden">
+        {MODULES.map((m, i) => {
+          const active = activeModule === i;
+          return (
+            <button
+              key={m.label}
+              onClick={() => setActiveModule(i)}
+              className={`flex flex-1 flex-col items-center gap-1 rounded-lg py-1.5 transition-colors ${
+                active ? "bg-acid-400/[0.12] text-acid-300" : "text-carbon-400 active:bg-carbon-800"
+              }`}
+            >
+              <m.icon size={17} strokeWidth={active ? 2.2 : 1.8} />
+              <span className="font-mono text-[8.5px] uppercase tracking-[0.1em]">{m.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       {exportState && (
         <SaveModal

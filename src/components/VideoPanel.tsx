@@ -495,7 +495,7 @@ function VideoPanelInner({ videos, onChange }: Props) {
                     />
                   ) : (
                     <button onClick={() => play(m.id)} className="min-w-0 flex-1 text-left" title={m.name}>
-                      <span className={`block truncate text-[12.5px] font-medium ${active ? "text-white" : "text-carbon-200"}`}>
+                      <span className={`block break-words text-[12.5px] font-medium leading-snug ${active ? "text-white" : "text-carbon-200"}`}>
                         {m.name}
                       </span>
                       {active && phase === "gesture" && (

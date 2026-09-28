@@ -38,7 +38,9 @@ export function TopBar({ name, dirty, saving, savedFlash, status, onRename, onSa
           <Hexagon size={27} strokeWidth={1.4} className="absolute text-acid-400" />
           <span className="font-display text-[11px] font-bold text-acid-400">M</span>
         </span>
-        <span className="font-display text-sm font-bold tracking-tight text-white">MANTIQUARIUS</span>
+        <span className="hidden font-display text-sm font-bold tracking-tight text-white sm:inline">
+          MANTIQUARIUS
+        </span>
       </div>
 
       <span className="hidden h-4 w-px bg-carbon-600 sm:block" />
@@ -57,7 +59,7 @@ export function TopBar({ name, dirty, saving, savedFlash, status, onRename, onSa
               setEditing(false);
             }
           }}
-          className="w-48 rounded-md border border-acid-500/50 bg-carbon-800 px-2 py-1 font-mono text-[12px] text-acid-300 outline-none"
+          className="w-32 rounded-md border border-acid-500/50 bg-carbon-800 px-2 py-1 font-mono text-[12px] text-acid-300 outline-none sm:w-48"
         />
       ) : (
         <button
@@ -66,7 +68,7 @@ export function TopBar({ name, dirty, saving, savedFlash, status, onRename, onSa
             setEditing(true);
           }}
           title="clique para renomear a sessão"
-          className="group flex max-w-[240px] items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-carbon-800"
+          className="group flex min-w-0 max-w-[150px] items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-carbon-800 sm:max-w-[240px]"
         >
           <span className="truncate font-mono text-[12px] font-medium text-carbon-100">
             {name}.ordo
@@ -100,7 +102,9 @@ export function TopBar({ name, dirty, saving, savedFlash, status, onRename, onSa
           ) : (
             <Save size={13.5} strokeWidth={2.2} />
           )}
-          {saving ? "preparando" : savedFlash ? "salvo" : "salvar .ordo"}
+          <span className="hidden sm:inline">
+            {saving ? "preparando" : savedFlash ? "salvo" : "salvar .ordo"}
+          </span>
         </button>
         <button
           onClick={onClose}

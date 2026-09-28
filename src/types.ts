@@ -1,7 +1,32 @@
+export type CanvasItemType = "sticky" | "text" | "image" | "draw" | "arrow";
+
+export interface CanvasItem {
+  id: string;
+  type: CanvasItemType;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text?: string;
+  color?: string;
+  src?: string; // dataURL (image)
+  fontSize?: number;
+  d?: string; // svg path (draw)
+  vw?: number; // viewbox original (draw)
+  vh?: number;
+  strokeWidth?: number;
+  from?: string; // id do item de origem (arrow)
+  to?: string; // id do item de destino (arrow)
+  label?: string; // rótulo no meio da seta
+}
+
 export interface OrdoNote {
   id: string;
   title: string;
   content: string; // html
+  mode?: "doc" | "canvas";
+  canvas?: CanvasItem[];
+  view?: { x: number; y: number; z: number };
 }
 
 export interface OrdoMedia {
