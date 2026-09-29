@@ -314,16 +314,39 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
     };
   }, [activePdfId, status]);
 
-  const bumpZoom = (delta: number) => {
-    setZoom((z) => {
-      const nz = Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100));
-      if (nz !== z) {
+  /**
+   * Aplica zoom mantendo estável o ponto de referência na tela.
+   * `anchorY` é a coordenada vertical do cursor/pinça (em px da janela).
+   */
+  const applyZoom = useCallback(
+    (next: number | ((prev: number) => number), anchorY?: number) => {
+      setZoom((z) => {
+        const raw = typeof next === "function" ? next(z) : next;
+        const nz = Math.min(3, Math.max(0.5, Math.round(raw * 100) / 100));
+        if (nz === z) return z;
+
+        const el = scrollRef.current;
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const focus = anchorY === undefined ? rect.height / 2 : anchorY - rect.top;
+          const ratio = nz / z;
+          const target = (el.scrollTop + focus) * ratio - focus;
+          // reposiciona depois que o novo tamanho das páginas é aplicado
+          requestAnimationFrame(() => {
+            if (scrollRef.current) scrollRef.current.scrollTop = Math.max(0, target);
+          });
+        }
+
         version.current += 1;
         setRenderTick((x) => x + 1);
-      }
-      return nz;
-    });
-  };
+        return nz;
+      });
+    },
+    []
+  );
+
+  const bumpZoom = (delta: number) => applyZoom((z) => z + delta);
+
   const resetZoom = () => {
     if (zoom !== 1) {
       version.current += 1;
@@ -331,6 +354,62 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
       setZoom(1);
     }
   };
+
+  /* ctrl+scroll (desktop) e pinça com dois dedos (celular) sobre o leitor */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || status !== "ready") return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      applyZoom((z) => z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientY);
+    };
+
+    const pts = new Map<number, { x: number; y: number }>();
+    let baseDist = 0;
+    let baseZoom = 1;
+    let anchorY = 0;
+
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        baseDist = Math.hypot(a.x - b.x, a.y - b.y);
+        baseZoom = zoomRef.current;
+        anchorY = (a.y + b.y) / 2;
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== "touch" || !pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size < 2 || baseDist === 0) return;
+      e.preventDefault(); // impede a rolagem enquanto dá pinça
+      const [a, b] = [...pts.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      applyZoom(baseZoom * (dist / baseDist), anchorY);
+    };
+
+    const onUp = (e: PointerEvent) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) baseDist = 0;
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("pointerdown", onDown, { passive: true });
+    el.addEventListener("pointermove", onMove, { passive: false });
+    el.addEventListener("pointerup", onUp, { passive: true });
+    el.addEventListener("pointercancel", onUp, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+    };
+  }, [applyZoom, status]);
 
   const goTo = useCallback(
     (p: number) => {
@@ -485,7 +564,10 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
           </div>
         )}
 
-        <div ref={scrollRef} className="os-scroll relative min-h-0 flex-1 overflow-auto">
+        <div
+          ref={scrollRef}
+          className="os-scroll pdf-scroll relative min-h-0 flex-1 overflow-auto"
+        >
           {/* empty */}
           {status === "idle" && pdfs.length === 0 && (
             <div className="flex h-full items-center justify-center p-5">

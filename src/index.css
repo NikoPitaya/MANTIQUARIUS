@@ -339,6 +339,11 @@ input.nospin {
   background: transparent;
 }
 
+/* leitor de pdf: pinça controlada pelo app, não pelo navegador */
+.pdf-scroll {
+  touch-action: pan-x pan-y;
+}
+
 /* pdf pages */
 .pdf-page {
   position: relative;
