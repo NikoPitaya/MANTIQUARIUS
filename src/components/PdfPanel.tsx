@@ -4,6 +4,7 @@ import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import {
   FileText, PanelLeftClose, PanelLeftOpen, Plus, Trash2, Upload, LoaderCircle,
   TriangleAlert, Lock, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize,
+  Globe, Link2, X, ExternalLink, RotateCw,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToUint8, stripExt, uid } from "../lib/ordo";
@@ -53,6 +54,11 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
   const [zoom, setZoom] = useState(1);
   const [renderTick, setRenderTick] = useState(0);
   const [containerW, setContainerW] = useState(0);
+  const [chooser, setChooser] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [frameKey, setFrameKey] = useState(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -198,6 +204,15 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
     }
     const media = pdfsRef.current.find((p) => p.id === activePdfId);
     if (!media) return;
+    // sites não passam pelo renderizador de pdf
+    if (media.source === "web") {
+      setDocView(null);
+      setStatus("idle");
+      setPageCount(0);
+      setError(null);
+      setPwState("none");
+      return;
+    }
     let alive = true;
     const loadId = activePdfId;
     version.current += 1;
@@ -431,6 +446,34 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
     onChangeRef.current(next, items[0]?.id ?? activeIdRef.current ?? undefined);
   }, []);
 
+  const addLink = useCallback(() => {
+    const raw = linkUrl.trim();
+    if (!raw) return;
+    let parsed: URL;
+    try {
+      parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    } catch {
+      setLinkError("endereço inválido — verifique o link.");
+      return;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      setLinkError("use um endereço http ou https.");
+      return;
+    }
+    const item: OrdoMedia = {
+      id: uid(),
+      name: parsed.hostname.replace(/^www\./, "") + (parsed.pathname !== "/" ? parsed.pathname : ""),
+      data: "",
+      source: "web",
+      url: parsed.toString(),
+    };
+    const next = [...pdfsRef.current, item];
+    onChangeRef.current(next, item.id);
+    setLinkUrl("");
+    setLinkError(null);
+    setLinkOpen(false);
+  }, [linkUrl]);
+
   const removePdf = useCallback((id: string) => {
     const doc = cache.current.get(id);
     if (doc) {
@@ -453,6 +496,8 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
   };
 
   const pageWidth = Math.max(160, (containerW - 28) * zoom);
+  const activeItem = pdfs.find((p) => p.id === activePdfId) ?? null;
+  const activeWeb = activeItem?.source === "web" && activeItem.url ? activeItem : null;
 
   return (
     <PanelChrome
@@ -475,11 +520,11 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
         <div className="flex h-full w-44 flex-col">
           <div className="shrink-0 border-b border-carbon-700/60 p-2">
             <button
-              onClick={() => inputRef.current?.click()}
+              onClick={() => setChooser(true)}
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-carbon-500 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-carbon-200 transition-all hover:border-acid-500/60 hover:text-acid-300 active:scale-[0.98]"
             >
               <Plus size={12} strokeWidth={2.4} />
-              adicionar pdf
+              adicionar
             </button>
           </div>
           <div className="os-scroll min-h-0 flex-1 space-y-1 overflow-y-auto p-1.5">
@@ -493,12 +538,16 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
                     : "border-transparent hover:bg-carbon-800/70"
                 }`}
               >
-                <FileText size={13} className={`shrink-0 ${p.id === activePdfId ? "text-acid-400" : "text-carbon-400"}`} />
+                {p.source === "web" ? (
+                  <Globe size={13} className={`shrink-0 ${p.id === activePdfId ? "text-acid-400" : "text-carbon-400"}`} />
+                ) : (
+                  <FileText size={13} className={`shrink-0 ${p.id === activePdfId ? "text-acid-400" : "text-carbon-400"}`} />
+                )}
                 <span className={`min-w-0 flex-1 truncate text-[11.5px] ${p.id === activePdfId ? "font-medium text-white" : "text-carbon-300"}`} title={p.name}>
                   {p.name}
                 </span>
                 <button
-                  title="remover pdf"
+                  title={p.source === "web" ? "remover site" : "remover pdf"}
                   onClick={(e) => {
                     e.stopPropagation();
                     removePdf(p.id);
@@ -527,7 +576,48 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
           void addFiles(e.dataTransfer.files);
         }}
       >
-        {status === "ready" && docView && (
+        {activeWeb ? (
+          /* ---------- navegador embutido ---------- */
+          <>
+            <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-carbon-700/70 px-2">
+              <Globe size={13} className="shrink-0 text-acid-400" />
+              <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-carbon-300" title={activeWeb.url}>
+                {activeWeb.url}
+              </span>
+              <button
+                title="recarregar"
+                onClick={() => setFrameKey((k) => k + 1)}
+                className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md text-carbon-300 transition-colors hover:bg-carbon-700/60 hover:text-white"
+              >
+                <RotateCw size={12.5} />
+              </button>
+              <button
+                title="abrir em nova janela"
+                onClick={() => window.open(activeWeb.url, "_blank", "noopener")}
+                className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md text-carbon-300 transition-colors hover:bg-carbon-700/60 hover:text-white"
+              >
+                <ExternalLink size={12.5} />
+              </button>
+            </div>
+            <div className="relative min-h-0 flex-1 bg-white">
+              <iframe
+                key={`${activeWeb.id}-${frameKey}`}
+                src={activeWeb.url}
+                title={activeWeb.name}
+                className="h-full w-full border-0"
+                referrerPolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+              />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-2">
+                <span className="pointer-events-auto rounded-full border border-carbon-600 bg-carbon-950/90 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-carbon-400 backdrop-blur">
+                  tela em branco? o site bloqueia incorporação — use a seta
+                </span>
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {!activeWeb && status === "ready" && docView && (
           <div className="flex h-9 shrink-0 items-center gap-1 border-b border-carbon-700/70 px-2">
             <button
               title="página anterior"
@@ -566,13 +656,13 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
 
         <div
           ref={scrollRef}
-          className="os-scroll pdf-scroll relative min-h-0 flex-1 overflow-auto"
+          className={`os-scroll pdf-scroll relative min-h-0 flex-1 overflow-auto ${activeWeb ? "hidden" : ""}`}
         >
           {/* empty */}
           {status === "idle" && pdfs.length === 0 && (
             <div className="flex h-full items-center justify-center p-5">
               <button
-                onClick={() => inputRef.current?.click()}
+                onClick={() => setChooser(true)}
                 className="group flex w-full max-w-[260px] flex-col items-center gap-3.5 rounded-2xl border border-dashed border-carbon-500 px-6 py-9 transition-all hover:border-acid-500/60 hover:bg-carbon-850 active:scale-[0.98]"
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-carbon-600 bg-carbon-800 text-carbon-200 transition-colors group-hover:border-acid-500/50 group-hover:text-acid-300">
@@ -587,10 +677,10 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
               </button>
             </div>
           )}
-          {status === "idle" && pdfs.length > 0 && (
+          {status === "idle" && pdfs.length > 0 && !activeWeb && (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-carbon-500">
               <FileText size={22} strokeWidth={1.5} />
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em]">escolha um documento ao lado</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em]">escolha um item ao lado</p>
             </div>
           )}
 
@@ -678,6 +768,115 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
           e.target.value = "";
         }}
       />
+
+      {/* escolha da origem */}
+      {chooser && (
+        <div
+          className="anim-fade-in absolute inset-0 z-30 flex items-center justify-center bg-carbon-950/85 p-4 backdrop-blur-sm"
+          onMouseDown={() => setChooser(false)}
+        >
+          <div
+            className="anim-pop-in w-full max-w-[260px] rounded-2xl border border-carbon-600 bg-carbon-850 p-4"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <p className="font-display text-[13.5px] font-semibold text-white">adicionar</p>
+              <button
+                onClick={() => setChooser(false)}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-carbon-400 hover:bg-carbon-700 hover:text-white"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setChooser(false);
+                inputRef.current?.click();
+              }}
+              className="mb-2 flex w-full items-center gap-2.5 rounded-xl border border-carbon-600 bg-carbon-800/70 px-3 py-2.5 text-left transition-colors hover:border-acid-500/50 hover:bg-carbon-800"
+            >
+              <Upload size={15} className="shrink-0 text-acid-300" />
+              <span>
+                <span className="block text-[12.5px] font-medium text-white">arquivo pdf</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-carbon-400">
+                  do computador
+                </span>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                setChooser(false);
+                setLinkUrl("");
+                setLinkError(null);
+                setLinkOpen(true);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl border border-carbon-600 bg-carbon-800/70 px-3 py-2.5 text-left transition-colors hover:border-acid-500/50 hover:bg-carbon-800"
+            >
+              <Globe size={15} className="shrink-0 text-acid-300" />
+              <span>
+                <span className="block text-[12.5px] font-medium text-white">link de site</span>
+                <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-carbon-400">
+                  navegar dentro da janela
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* caixa do link */}
+      {linkOpen && (
+        <div
+          className="anim-fade-in absolute inset-0 z-30 flex items-center justify-center bg-carbon-950/85 p-4 backdrop-blur-sm"
+          onMouseDown={() => setLinkOpen(false)}
+        >
+          <div
+            className="anim-pop-in w-full max-w-[300px] rounded-2xl border border-carbon-600 bg-carbon-850 p-4"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <Globe size={15} className="text-acid-300" />
+              <p className="font-display text-[13.5px] font-semibold text-white">link do site</p>
+              <button
+                onClick={() => setLinkOpen(false)}
+                className="ml-auto flex h-6 w-6 items-center justify-center rounded-md text-carbon-400 hover:bg-carbon-700 hover:text-white"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div className="mb-2 flex items-center gap-2 rounded-lg border border-carbon-600 bg-carbon-900 px-2.5">
+              <Link2 size={13} className="shrink-0 text-carbon-500" />
+              <input
+                autoFocus
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addLink()}
+                placeholder="exemplo.com/pagina"
+                className="min-w-0 flex-1 bg-transparent py-2 text-[12px] text-white outline-none placeholder:text-carbon-600"
+              />
+            </div>
+            {linkError && (
+              <p className="anim-pop-in mb-2 flex items-start gap-1.5 rounded-lg border border-ember-400/40 bg-ember-400/10 px-2.5 py-1.5 text-[11px] leading-snug text-ember-400">
+                <TriangleAlert size={12} className="mt-0.5 shrink-0" />
+                {linkError}
+              </p>
+            )}
+            <button
+              onClick={addLink}
+              disabled={!linkUrl.trim()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-acid-400 py-2.5 text-[12.5px] font-bold text-carbon-950 transition-colors hover:bg-acid-300 disabled:opacity-50"
+            >
+              <Plus size={14} strokeWidth={2.6} />
+              adicionar à lista
+            </button>
+            <p className="mt-2 text-center font-mono text-[9px] leading-relaxed text-carbon-500">
+              alguns sites bloqueiam incorporação;
+              <br />
+              nesses casos use o botão de abrir em nova janela
+            </p>
+          </div>
+        </div>
+      )}
     </PanelChrome>
   );
 }

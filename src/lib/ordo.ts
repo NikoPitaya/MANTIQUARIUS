@@ -62,8 +62,9 @@ const asMedia = (x: unknown): OrdoMedia | null => {
     name: typeof m.name === "string" ? m.name : "arquivo",
     data: m.data,
     lastPage: typeof m.lastPage === "number" ? m.lastPage : undefined,
-    source: m.source === "youtube" ? "youtube" : "file",
+    source: m.source === "youtube" || m.source === "web" ? m.source : "file",
     videoId: typeof m.videoId === "string" ? m.videoId : undefined,
+    url: typeof m.url === "string" ? m.url : undefined,
   };
 };
 
@@ -155,8 +156,9 @@ interface BinaryMedia {
   mime: string;
   size: number;
   lastPage?: number;
-  source?: "file" | "youtube";
+  source?: "file" | "youtube" | "web";
   videoId?: string;
+  url?: string;
 }
 
 interface BinaryManifest {
@@ -255,6 +257,17 @@ export const prepareOrdoExport = async (
           size: 0,
           source: "youtube",
           videoId: media.videoId,
+        });
+        continue;
+      }
+      if (media.source === "web" && media.url) {
+        target.push({
+          id: media.id,
+          name: media.name,
+          mime: "application/x-web-link",
+          size: 0,
+          source: "web",
+          url: media.url,
         });
         continue;
       }
@@ -363,7 +376,7 @@ const parseBinaryFile = async (file: File): Promise<OrdoDoc | null> => {
       const result: OrdoMedia[] = [];
       for (const media of group) {
         if (offset + media.size > file.size) throw new Error("arquivo incompleto");
-        const data = media.source === "youtube"
+        const data = media.source === "youtube" || media.source === "web"
           ? ""
           : await fileToDataURL(file.slice(offset, offset + media.size, media.mime));
         offset += media.size;
@@ -372,8 +385,9 @@ const parseBinaryFile = async (file: File): Promise<OrdoDoc | null> => {
           name: media.name,
           data,
           lastPage: media.lastPage,
-          source: media.source === "youtube" ? "youtube" : "file",
+          source: media.source === "youtube" || media.source === "web" ? media.source : "file",
           videoId: media.videoId,
+          url: media.url,
         });
       }
       return result;

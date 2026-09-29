@@ -43,8 +43,9 @@ export interface OrdoMedia {
   name: string;
   data: string; // dataURL (vazio quando for youtube)
   lastPage?: number; // pdfs only
-  source?: "file" | "youtube";
+  source?: "file" | "youtube" | "web";
   videoId?: string; // youtube
+  url?: string; // site (web)
 }
 
 export interface OrdoDoc {
