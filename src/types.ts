@@ -32,8 +32,10 @@ export interface OrdoNote {
 export interface OrdoMedia {
   id: string;
   name: string;
-  data: string; // dataURL
+  data: string; // dataURL (vazio quando for youtube)
   lastPage?: number; // pdfs only
+  source?: "file" | "youtube";
+  videoId?: string; // youtube
 }
 
 export interface OrdoDoc {

@@ -18,7 +18,8 @@ import { AudioPanel } from "./components/AudioPanel";
 import { PdfPanel } from "./components/PdfPanel";
 import { VideoPanel } from "./components/VideoPanel";
 import { SaveModal } from "./components/SaveModal";
-import { NotebookPen, Dices, Music, FileText, Film } from "lucide-react";
+import { NotebookPen, Dices, Music, FileText, Film, ChevronDown } from "lucide-react";
+import { lsGet, lsSet } from "./lib/store";
 
 const AUTOSAVE_KEY = "ordo:autosave";
 
@@ -51,6 +52,7 @@ export default function App() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [exportState, setExportState] = useState<ExportState | null>(null);
   const [activeModule, setActiveModule] = useState(0);
+  const [topBarOpen, setTopBarOpen] = useState(() => lsGet("ordo:ui:topbar") !== "0");
   const [homeError, setHomeError] = useState<string | null>(null);
   const [autosaveMeta, setAutosaveMeta] = useState<AutosaveMeta | null>(() => {
     try {
@@ -89,6 +91,11 @@ export default function App() {
     [patch]
   );
   const handleOwlbear = useCallback((owlbearOpened: boolean) => patch({ owlbearOpened }), [patch]);
+
+  const setTopBar = useCallback((open: boolean) => {
+    setTopBarOpen(open);
+    lsSet("ordo:ui:topbar", open ? "1" : "0");
+  }, []);
 
   /* ---------------- save / export ---------------- */
   const flashSaved = useCallback(() => {
@@ -267,17 +274,29 @@ export default function App() {
   }
 
   return (
-    <div className="ws-backdrop flex h-full flex-col">
-      <TopBar
-        name={doc.name}
-        dirty={dirty}
-        saving={saving}
-        savedFlash={savedFlash}
-        status={status}
-        onRename={(name) => patch({ name })}
-        onSave={save}
-        onClose={close}
-      />
+    <div className="ws-backdrop relative flex h-full flex-col">
+      {topBarOpen ? (
+        <TopBar
+          name={doc.name}
+          dirty={dirty}
+          saving={saving}
+          savedFlash={savedFlash}
+          status={status}
+          onRename={(name) => patch({ name })}
+          onSave={save}
+          onHide={() => setTopBar(false)}
+          onClose={close}
+        />
+      ) : (
+        <button
+          onClick={() => setTopBar(true)}
+          title="mostrar menu superior"
+          className="anim-pop-in absolute right-3 top-2 z-40 flex h-8 items-center gap-1.5 rounded-lg border border-carbon-600 bg-carbon-900/95 px-2.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-carbon-300 shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur transition-colors hover:border-acid-500/50 hover:text-acid-300"
+        >
+          <ChevronDown size={13} />
+          <span className="hidden sm:inline">mostrar menu</span>
+        </button>
+      )}
       <main
         data-active={activeModule}
         className="ws-main grid min-h-0 flex-1 grid-cols-6 grid-rows-2 gap-2 overflow-hidden p-2"

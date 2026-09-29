@@ -62,6 +62,8 @@ const asMedia = (x: unknown): OrdoMedia | null => {
     name: typeof m.name === "string" ? m.name : "arquivo",
     data: m.data,
     lastPage: typeof m.lastPage === "number" ? m.lastPage : undefined,
+    source: m.source === "youtube" ? "youtube" : "file",
+    videoId: typeof m.videoId === "string" ? m.videoId : undefined,
   };
 };
 
@@ -153,6 +155,8 @@ interface BinaryMedia {
   mime: string;
   size: number;
   lastPage?: number;
+  source?: "file" | "youtube";
+  videoId?: string;
 }
 
 interface BinaryManifest {
@@ -243,6 +247,17 @@ export const prepareOrdoExport = async (
         0.04 + (processedChars / totalChars) * 0.9,
         `processando ${kind} ${i + 1} de ${group.length}`
       );
+      if (media.source === "youtube" && media.videoId) {
+        target.push({
+          id: media.id,
+          name: media.name,
+          mime: "application/x-youtube-link",
+          size: 0,
+          source: "youtube",
+          videoId: media.videoId,
+        });
+        continue;
+      }
       const result = await dataUrlToBlobChunked(media.data, (chars) => {
         processedChars += chars;
         onProgress?.(
@@ -256,6 +271,7 @@ export const prepareOrdoExport = async (
         mime: result.mime,
         size: result.blob.size,
         lastPage: media.lastPage,
+        source: "file",
       });
       blobParts.push(result.blob);
     }
@@ -347,15 +363,17 @@ const parseBinaryFile = async (file: File): Promise<OrdoDoc | null> => {
       const result: OrdoMedia[] = [];
       for (const media of group) {
         if (offset + media.size > file.size) throw new Error("arquivo incompleto");
-        const data = await fileToDataURL(
-          file.slice(offset, offset + media.size, media.mime)
-        );
+        const data = media.source === "youtube"
+          ? ""
+          : await fileToDataURL(file.slice(offset, offset + media.size, media.mime));
         offset += media.size;
         result.push({
           id: media.id,
           name: media.name,
           data,
           lastPage: media.lastPage,
+          source: media.source === "youtube" ? "youtube" : "file",
+          videoId: media.videoId,
         });
       }
       return result;

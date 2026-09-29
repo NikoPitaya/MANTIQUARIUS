@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Save, X, Hexagon, LoaderCircle } from "lucide-react";
+import { Check, Save, X, Hexagon, LoaderCircle, ChevronUp } from "lucide-react";
 
 interface Props {
   name: string;
@@ -9,10 +9,11 @@ interface Props {
   status: string;
   onRename: (name: string) => void;
   onSave: () => void;
+  onHide: () => void;
   onClose: () => void;
 }
 
-export function TopBar({ name, dirty, saving, savedFlash, status, onRename, onSave, onClose }: Props) {
+export function TopBar({ name, dirty, saving, savedFlash, status, onRename, onSave, onHide, onClose }: Props) {
   const [editing, setEditing] = useState(false);
   const [temp, setTemp] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +106,13 @@ export function TopBar({ name, dirty, saving, savedFlash, status, onRename, onSa
           <span className="hidden sm:inline">
             {saving ? "preparando" : savedFlash ? "salvo" : "salvar .ordo"}
           </span>
+        </button>
+        <button
+          onClick={onHide}
+          title="esconder menu superior"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-carbon-600 text-carbon-300 transition-all hover:border-carbon-500 hover:bg-carbon-800 hover:text-white active:scale-95"
+        >
+          <ChevronUp size={14} strokeWidth={2.2} />
         </button>
         <button
           onClick={onClose}
