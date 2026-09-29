@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   StickyNote, Type, ImagePlus, Trash2, Copy, Pencil, Check,
   ZoomIn, ZoomOut, Maximize, Hand, MousePointer2, Palette, Brush, Waypoints, Tag,
+  Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight,
+  ArrowUpToLine, AlignVerticalJustifyCenter, ArrowDownToLine, Baseline, CaseSensitive,
 } from "lucide-react";
 import type { CanvasItem } from "../types";
 import { uid, fileToDataURL } from "../lib/ordo";
@@ -13,6 +15,14 @@ interface Props {
 }
 
 const COLORS = ["#d4f74c", "#ffd166", "#ff9f7a", "#ff6b8b", "#b18cff", "#6fb4ff", "#5fe0c0", "#e6e8eb"];
+const TEXT_COLORS = ["#08090b", "#ffffff", "#d4f74c", "#ff6b5c", "#6fb4ff", "#b18cff"];
+const FONTS = [
+  { label: "Padrão", value: "Inter, sans-serif" },
+  { label: "Display", value: "'Space Grotesk', sans-serif" },
+  { label: "Serifa", value: "'Newsreader', Georgia, serif" },
+  { label: "Mono", value: "'JetBrains Mono', monospace" },
+  { label: "Manuscrita", value: "'Caveat', cursive" },
+];
 const MIN_Z = 0.2;
 const MAX_Z = 3;
 const clampZ = (z: number) => Math.min(MAX_Z, Math.max(MIN_Z, z));
@@ -33,6 +43,7 @@ export function CanvasBoard({ items, view, onChange }: Props) {
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
   const [liveRect, setLiveRect] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
   const [palette, setPalette] = useState(false);
+  const [format, setFormat] = useState(false);
   const [penColor, setPenColor] = useState("#d4f74c");
   const [penWidth, setPenWidth] = useState(4);
   const [livePath, setLivePath] = useState<string | null>(null);
@@ -318,10 +329,11 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       }
 
       // fundo → pan
-      e.preventDefault();
-      setSelected(null);
-      setEditing(null);
-      setPalette(false);
+        e.preventDefault();
+        setSelected(null);
+        setEditing(null);
+        setPalette(false);
+        setFormat(false);
       drag.current = {
         kind: "pan",
         startX: e.clientX,
@@ -713,7 +725,7 @@ export function CanvasBoard({ items, view, onChange }: Props) {
                     style={{ background: it.color ?? COLORS[1] }}
                   >
                     <CardText
-                      value={it.text ?? ""}
+                      item={it}
                       editing={isEdit}
                       fontSize={it.fontSize ?? 14}
                       dark
@@ -724,7 +736,7 @@ export function CanvasBoard({ items, view, onChange }: Props) {
                 ) : (
                   <div className="h-full w-full overflow-hidden rounded-xl p-2">
                     <CardText
-                      value={it.text ?? ""}
+                      item={it}
                       editing={isEdit}
                       fontSize={it.fontSize ?? 18}
                       color={it.color ?? "#e6e8eb"}
@@ -801,6 +813,86 @@ export function CanvasBoard({ items, view, onChange }: Props) {
               ))}
             </div>
           )}
+
+          {format && hasText && (
+            <div className="mb-2 space-y-1.5 border-b border-carbon-700/70 px-1 pb-2">
+              {/* estilos */}
+              <div className="flex flex-wrap items-center gap-1">
+                <FmtBtn label="negrito" active={!!sel.bold} onClick={() => patchItem(sel.id, { bold: !sel.bold })}>
+                  <Bold size={14} />
+                </FmtBtn>
+                <FmtBtn label="itálico" active={!!sel.italic} onClick={() => patchItem(sel.id, { italic: !sel.italic })}>
+                  <Italic size={14} />
+                </FmtBtn>
+                <FmtBtn label="sublinhado" active={!!sel.underline} onClick={() => patchItem(sel.id, { underline: !sel.underline })}>
+                  <Underline size={14} />
+                </FmtBtn>
+                <FmtBtn label="tachado" active={!!sel.strike} onClick={() => patchItem(sel.id, { strike: !sel.strike })}>
+                  <Strikethrough size={14} />
+                </FmtBtn>
+
+                <span className="mx-0.5 h-5 w-px bg-carbon-700" />
+
+                <FmtBtn label="alinhar à esquerda" active={(sel.align ?? "left") === "left"} onClick={() => patchItem(sel.id, { align: "left" })}>
+                  <AlignLeft size={14} />
+                </FmtBtn>
+                <FmtBtn label="centralizar" active={sel.align === "center"} onClick={() => patchItem(sel.id, { align: "center" })}>
+                  <AlignCenter size={14} />
+                </FmtBtn>
+                <FmtBtn label="alinhar à direita" active={sel.align === "right"} onClick={() => patchItem(sel.id, { align: "right" })}>
+                  <AlignRight size={14} />
+                </FmtBtn>
+
+                <span className="mx-0.5 h-5 w-px bg-carbon-700" />
+
+                <FmtBtn label="topo" active={(sel.valign ?? "top") === "top"} onClick={() => patchItem(sel.id, { valign: "top" })}>
+                  <ArrowUpToLine size={14} />
+                </FmtBtn>
+                <FmtBtn label="meio" active={sel.valign === "middle"} onClick={() => patchItem(sel.id, { valign: "middle" })}>
+                  <AlignVerticalJustifyCenter size={14} />
+                </FmtBtn>
+                <FmtBtn label="base" active={sel.valign === "bottom"} onClick={() => patchItem(sel.id, { valign: "bottom" })}>
+                  <ArrowDownToLine size={14} />
+                </FmtBtn>
+              </div>
+
+              {/* fonte e cor da letra */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select
+                  value={sel.font ?? FONTS[0].value}
+                  onChange={(e) => patchItem(sel.id, { font: e.target.value })}
+                  title="fonte"
+                  className="h-7 cursor-pointer rounded-lg border border-carbon-600 bg-carbon-800 px-1.5 text-[11px] text-carbon-100 outline-none [&>option]:bg-carbon-800"
+                >
+                  {FONTS.map((f) => (
+                    <option key={f.label} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
+
+                <span className="flex items-center gap-1 rounded-lg border border-carbon-600 px-1.5 py-1">
+                  <Baseline size={13} className="shrink-0 text-carbon-400" />
+                  {TEXT_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => patchItem(sel.id, { textColor: c })}
+                      title="cor da letra"
+                      className={`h-5 w-5 rounded-md border-2 transition-transform active:scale-90 ${
+                        sel.textColor === c ? "border-acid-400" : "border-carbon-700"
+                      }`}
+                      style={{ background: c }}
+                    />
+                  ))}
+                  <button
+                    onClick={() => patchItem(sel.id, { textColor: undefined })}
+                    title="cor padrão"
+                    className="rounded-md px-1.5 py-0.5 font-mono text-[9px] uppercase text-carbon-400 hover:text-white"
+                  >
+                    auto
+                  </button>
+                </span>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
             {sel.type !== "image" && (
               <BarBtn onClick={() => setPalette((p) => !p)} active={palette}>
@@ -824,6 +916,10 @@ export function CanvasBoard({ items, view, onChange }: Props) {
                 <BarBtn onClick={() => setEditing(editing === sel.id ? null : sel.id)}>
                   {editing === sel.id ? <Check size={15} /> : <Pencil size={15} />}
                   {editing === sel.id ? "pronto" : "editar"}
+                </BarBtn>
+                <BarBtn onClick={() => setFormat((f) => !f)} active={format}>
+                  <CaseSensitive size={16} />
+                  formatar
                 </BarBtn>
                 <div className="flex items-center overflow-hidden rounded-lg border border-carbon-600">
                   <button
@@ -870,9 +966,9 @@ export function CanvasBoard({ items, view, onChange }: Props) {
 }
 
 function CardText({
-  value, editing, fontSize, color, dark, onChange, onDone,
+  item, editing, fontSize, color, dark, onChange, onDone,
 }: {
-  value: string;
+  item: CanvasItem;
   editing: boolean;
   fontSize: number;
   color?: string;
@@ -888,6 +984,23 @@ function CardText({
     }
   }, [editing]);
 
+  const value = item.text ?? "";
+  const decoration = [item.underline ? "underline" : "", item.strike ? "line-through" : ""]
+    .filter(Boolean)
+    .join(" ");
+
+  const style: React.CSSProperties = {
+    fontSize,
+    color: item.textColor ?? (dark ? "#08090b" : color),
+    lineHeight: 1.4,
+    fontWeight: item.bold ? 700 : 400,
+    fontStyle: item.italic ? "italic" : "normal",
+    textDecoration: decoration || "none",
+    textAlign: item.align ?? "left",
+    fontFamily: item.font ?? "Inter, sans-serif",
+    textUnderlineOffset: 2,
+  };
+
   if (editing) {
     return (
       <textarea
@@ -902,14 +1015,16 @@ function CardText({
         }}
         placeholder="digite..."
         className="h-full w-full resize-none bg-transparent outline-none placeholder:opacity-40"
-        style={{ fontSize, color: dark ? "#08090b" : color, lineHeight: 1.4 }}
+        style={style}
       />
     );
   }
+  const vAlign =
+    item.valign === "middle" ? "center" : item.valign === "bottom" ? "flex-end" : "flex-start";
   return (
     <p
-      className="h-full w-full overflow-hidden whitespace-pre-wrap break-words"
-      style={{ fontSize, color: dark ? "#08090b" : color, lineHeight: 1.4 }}
+      className="flex h-full w-full flex-col overflow-hidden whitespace-pre-wrap break-words"
+      style={{ ...style, justifyContent: vAlign }}
     >
       {value || <span className="opacity-40">toque duas vezes para escrever</span>}
     </p>
@@ -924,6 +1039,24 @@ function ToolBtn({
       title={label}
       onClick={onClick}
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors active:scale-95 ${
+        active
+          ? "border-acid-500/50 bg-acid-400/15 text-acid-300"
+          : "border-transparent text-carbon-300 hover:border-carbon-600 hover:bg-carbon-800 hover:text-white"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FmtBtn({
+  label, active, onClick, children,
+}: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      title={label}
+      onClick={onClick}
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors active:scale-90 ${
         active
           ? "border-acid-500/50 bg-acid-400/15 text-acid-300"
           : "border-transparent text-carbon-300 hover:border-carbon-600 hover:bg-carbon-800 hover:text-white"

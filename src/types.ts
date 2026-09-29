@@ -18,6 +18,15 @@ export interface CanvasItem {
   from?: string; // id do item de origem (arrow)
   to?: string; // id do item de destino (arrow)
   label?: string; // rótulo no meio da seta
+  // formatação de texto (sticky e text)
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  align?: "left" | "center" | "right";
+  valign?: "top" | "middle" | "bottom";
+  font?: string;
+  textColor?: string;
 }
 
 export interface OrdoNote {
