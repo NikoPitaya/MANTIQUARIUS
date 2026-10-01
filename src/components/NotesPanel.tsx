@@ -697,28 +697,30 @@ function NotesPanelInner({ notes, activeId, onChange }: Props) {
                   </span>
                 )}
                 {renamingId !== n.id && (
-                  <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100">
                     <button
                       title="renomear"
+                      aria-label="renomear"
                       onClick={(e) => {
                         e.stopPropagation();
                         setRenamingId(n.id);
                         setRenameVal(n.title);
                       }}
-                      className="flex h-5 w-5 items-center justify-center rounded text-carbon-400 hover:bg-carbon-600 hover:text-white"
+                      className="flex h-6.5 w-6.5 items-center justify-center rounded-md text-carbon-400 transition-colors hover:bg-carbon-600 hover:text-white active:scale-90"
                     >
-                      <Pencil size={10.5} />
+                      <Pencil size={12} />
                     </button>
                     {notes.length > 1 && (
                       <button
                         title="apagar"
+                        aria-label="apagar"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeNote(n.id);
                         }}
-                        className="flex h-5 w-5 items-center justify-center rounded text-carbon-400 hover:bg-ember-400/20 hover:text-ember-400"
+                        className="flex h-6.5 w-6.5 items-center justify-center rounded-md text-carbon-400 transition-colors hover:bg-ember-400/15 hover:text-ember-400 active:scale-90"
                       >
-                        <Trash2 size={10.5} />
+                        <Trash2 size={12} />
                       </button>
                     )}
                   </span>

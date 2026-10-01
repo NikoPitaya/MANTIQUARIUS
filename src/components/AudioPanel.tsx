@@ -10,6 +10,7 @@ import { ContextMenuView, useContextMenu } from "./ContextMenu";
 import { VolumeSlider } from "./VolumeSlider";
 import { lsGet, lsSet } from "../lib/store";
 import { useReorder } from "../lib/useReorder";
+import { ItemActions } from "./ItemActions";
 import type { YTPlayer } from "../lib/youtube";
 import { parseYouTubeId, fetchYouTubeTitle, loadYouTubeAPI } from "../lib/youtube";
 
@@ -602,6 +603,16 @@ function AudioPanelInner({ audios, onChange }: Props) {
                         </span>
                       ) : null}
                     </button>
+                  )}
+
+                  {renamingId !== m.id && (
+                    <ItemActions
+                      onRename={() => {
+                        setRenamingId(m.id);
+                        setRenameVal(m.name);
+                      }}
+                      onRemove={() => remove(m.id)}
+                    />
                   )}
                 </div>
               );

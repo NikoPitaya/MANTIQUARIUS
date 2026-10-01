@@ -11,6 +11,7 @@ import { ContextMenuView, useContextMenu } from "./ContextMenu";
 import { VolumeSlider } from "./VolumeSlider";
 import { lsGet, lsSet } from "../lib/store";
 import { useReorder } from "../lib/useReorder";
+import { ItemActions } from "./ItemActions";
 
 interface Props {
   videos: OrdoMedia[];
@@ -555,6 +556,16 @@ function VideoPanelInner({ videos, onChange, sfx, onSfxChange }: Props) {
                         </span>
                       )}
                     </button>
+                  )}
+
+                  {renamingId !== m.id && (
+                    <ItemActions
+                      onRename={() => {
+                        setRenamingId(m.id);
+                        setRenameVal(m.name);
+                      }}
+                      onRemove={() => remove(m.id)}
+                    />
                   )}
                 </div>
               );

@@ -647,9 +647,9 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
                     e.stopPropagation();
                     removePdf(p.id);
                   }}
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-carbon-500 opacity-0 transition-all hover:bg-ember-400/20 hover:text-ember-400 group-hover:opacity-100"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-carbon-400 transition-all hover:bg-ember-400/15 hover:text-ember-400 active:scale-90 lg:opacity-0 lg:group-hover:opacity-100"
                 >
-                  <Trash2 size={10.5} />
+                  <Trash2 size={13} />
                 </button>
               </div>
             ))}
