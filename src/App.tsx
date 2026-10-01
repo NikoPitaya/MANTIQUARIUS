@@ -91,6 +91,7 @@ export default function App() {
     [patch]
   );
   const handleOwlbear = useCallback((owlbearOpened: boolean) => patch({ owlbearOpened }), [patch]);
+  const handleSfx = useCallback((sfx: OrdoDoc["sfx"]) => patch({ sfx }), [patch]);
 
   const setTopBar = useCallback((open: boolean) => {
     setTopBarOpen(open);
@@ -305,7 +306,12 @@ export default function App() {
         <OwlbearPanel opened={doc.owlbearOpened} onChange={handleOwlbear} />
         <AudioPanel audios={doc.audios} onChange={handleAudios} />
         <PdfPanel pdfs={doc.pdfs} activePdfId={doc.activePdfId} onChange={handlePdfs} />
-        <VideoPanel videos={doc.videos} onChange={handleVideos} />
+        <VideoPanel
+          videos={doc.videos}
+          onChange={handleVideos}
+          sfx={doc.sfx ?? []}
+          onSfxChange={handleSfx}
+        />
       </main>
 
       {/* seletor de módulos — apenas no celular/tablet */}

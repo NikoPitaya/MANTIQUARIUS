@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Film, Plus, Pencil, Trash2, Upload, MonitorUp, Square, TriangleAlert, Clapperboard, X,
-  Image as ImageIcon, GripVertical, ArrowUpToLine,
+  Image as ImageIcon, GripVertical, ArrowUpToLine, AudioWaveform,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
+import { SfxPanel } from "./SfxPanel";
 import { fileToDataURL, dataURLToUint8, stripExt, uid } from "../lib/ordo";
 import { PanelChrome, HeaderIconBtn } from "./PanelChrome";
 import { ContextMenuView, useContextMenu } from "./ContextMenu";
@@ -14,6 +15,8 @@ import { useReorder } from "../lib/useReorder";
 interface Props {
   videos: OrdoMedia[];
   onChange: (videos: OrdoMedia[]) => void;
+  sfx: OrdoMedia[];
+  onSfxChange: (sfx: OrdoMedia[]) => void;
 }
 
 type Phase = "idle" | "loading" | "gesture" | "playing" | "error";
@@ -83,7 +86,8 @@ const readVol = (): number => {
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 1;
 };
 
-function VideoPanelInner({ videos, onChange }: Props) {
+function VideoPanelInner({ videos, onChange, sfx, onSfxChange }: Props) {
+  const [tab, setTab] = useState<"cine" | "sfx">("cine");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [volume, setVolume] = useState(readVol);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -385,21 +389,48 @@ function VideoPanelInner({ videos, onChange }: Props) {
       icon={Film}
       className="col-span-6 row-span-1 lg:col-span-2"
       actions={
-        <>
-          {playingId && (
-            <HeaderIconBtn title="parar exibição" onClick={stop}>
-              <Square size={11} />
+        tab === "cine" ? (
+          <>
+            {playingId && (
+              <HeaderIconBtn title="parar exibição" onClick={stop}>
+                <Square size={11} />
+              </HeaderIconBtn>
+            )}
+            <HeaderIconBtn title={popupOpen ? "focar janela de vídeo" : "abrir janela de vídeo"} onClick={focusPopup} accent={popupOpen}>
+              <MonitorUp size={12.5} />
             </HeaderIconBtn>
-          )}
-          <HeaderIconBtn title={popupOpen ? "focar janela de vídeo" : "abrir janela de vídeo"} onClick={focusPopup} accent={popupOpen}>
-            <MonitorUp size={12.5} />
-          </HeaderIconBtn>
-          <HeaderIconBtn title="adicionar vídeo ou imagem" onClick={() => inputRef.current?.click()} accent>
-            <Plus size={13} strokeWidth={2.4} />
-          </HeaderIconBtn>
-        </>
+            <HeaderIconBtn title="adicionar vídeo ou imagem" onClick={() => inputRef.current?.click()} accent>
+              <Plus size={13} strokeWidth={2.4} />
+            </HeaderIconBtn>
+          </>
+        ) : undefined
       }
     >
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* abas */}
+        <div className="flex shrink-0 items-center gap-1 border-b border-carbon-700/70 px-1.5 py-1">
+          <TabBtn active={tab === "cine"} onClick={() => setTab("cine")}>
+            <Clapperboard size={12} />
+            cinematics
+          </TabBtn>
+          <TabBtn active={tab === "sfx"} onClick={() => setTab("sfx")}>
+            <AudioWaveform size={12} />
+            ambiente
+          </TabBtn>
+          {sfx.length > 0 && (
+            <span
+              title={`${sfx.length} ambiência(s) tocando`}
+              className="ml-auto mr-1 flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.14em] text-acid-400"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-acid-400 animate-[pulse-dot_1.6s_ease-in-out_infinite]" />
+              {sfx.length}
+            </span>
+          )}
+        </div>
+
+        {tab === "sfx" ? (
+          <SfxPanel sfx={sfx} onChange={onSfxChange} />
+        ) : (
       <div
         className="flex min-h-0 flex-1 flex-col"
         onDragOver={(e) => e.preventDefault()}
@@ -562,6 +593,8 @@ function VideoPanelInner({ videos, onChange }: Props) {
           </div>
         )}
       </div>
+        )}
+      </div>
 
       <input
         ref={inputRef}
@@ -579,4 +612,24 @@ function VideoPanelInner({ videos, onChange }: Props) {
   );
 }
 
-export const VideoPanel = memo(VideoPanelInner, (p, n) => p.videos === n.videos);
+function TabBtn({
+  active, onClick, children,
+}: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em] transition-colors ${
+        active
+          ? "bg-acid-400/15 text-acid-300"
+          : "text-carbon-400 hover:bg-carbon-800 hover:text-white"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export const VideoPanel = memo(
+  VideoPanelInner,
+  (p, n) => p.videos === n.videos && p.sfx === n.sfx
+);

@@ -46,6 +46,7 @@ export interface OrdoMedia {
   source?: "file" | "youtube" | "web";
   videoId?: string; // youtube
   url?: string; // site (web)
+  volume?: number; // 0..1 — usado pelos sons de ambiente
 }
 
 export interface OrdoDoc {
@@ -56,6 +57,7 @@ export interface OrdoDoc {
   pdfs: OrdoMedia[];
   activePdfId: string | null;
   videos: OrdoMedia[];
+  sfx: OrdoMedia[];
   owlbearOpened: boolean;
 }
 

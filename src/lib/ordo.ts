@@ -15,9 +15,12 @@ export const emptyDoc = (): OrdoDoc => {
     pdfs: [],
     activePdfId: null,
     videos: [],
+    sfx: [],
     owlbearOpened: false,
   };
 };
+
+
 
 export const fileToDataURL = (file: File | Blob): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -65,6 +68,7 @@ const asMedia = (x: unknown): OrdoMedia | null => {
     source: m.source === "youtube" || m.source === "web" ? m.source : "file",
     videoId: typeof m.videoId === "string" ? m.videoId : undefined,
     url: typeof m.url === "string" ? m.url : undefined,
+    volume: typeof m.volume === "number" ? m.volume : undefined,
   };
 };
 
@@ -104,6 +108,9 @@ export const parseDoc = (raw: string): OrdoDoc | null => {
       pdfs,
       activePdfId,
       videos: (Array.isArray(j.videos) ? j.videos : [])
+        .map(asMedia)
+        .filter((m): m is OrdoMedia => m !== null),
+      sfx: (Array.isArray(j.sfx) ? j.sfx : [])
         .map(asMedia)
         .filter((m): m is OrdoMedia => m !== null),
       owlbearOpened: !!j.owlbearOpened,
@@ -159,6 +166,7 @@ interface BinaryMedia {
   source?: "file" | "youtube" | "web";
   videoId?: string;
   url?: string;
+  volume?: number;
 }
 
 interface BinaryManifest {
@@ -171,6 +179,7 @@ interface BinaryManifest {
   activeNoteId: string;
   activePdfId: string | null;
   owlbearOpened: boolean;
+  sfx: BinaryMedia[];
   audios: BinaryMedia[];
   pdfs: BinaryMedia[];
   videos: BinaryMedia[];
@@ -227,13 +236,15 @@ export const prepareOrdoExport = async (
   doc: OrdoDoc,
   onProgress?: (progress: number, label: string) => void
 ): Promise<ExportBundle> => {
-  const all = [...doc.audios, ...doc.pdfs, ...doc.videos];
+  const sfxList = doc.sfx ?? [];
+  const all = [...doc.audios, ...doc.pdfs, ...doc.videos, ...sfxList];
   const totalChars = Math.max(1, all.reduce((sum, media) => sum + media.data.length, 0));
   let processedChars = 0;
   const blobParts: BlobPart[] = [];
   const audioMeta: BinaryMedia[] = [];
   const pdfMeta: BinaryMedia[] = [];
   const videoMeta: BinaryMedia[] = [];
+  const sfxMeta: BinaryMedia[] = [];
 
   onProgress?.(0.02, "preparando manifesto");
   await nextPaint();
@@ -285,6 +296,7 @@ export const prepareOrdoExport = async (
         size: result.blob.size,
         lastPage: media.lastPage,
         source: "file",
+        volume: media.volume,
       });
       blobParts.push(result.blob);
     }
@@ -293,6 +305,7 @@ export const prepareOrdoExport = async (
   await appendGroup(doc.audios, audioMeta, "áudio");
   await appendGroup(doc.pdfs, pdfMeta, "pdf");
   await appendGroup(doc.videos, videoMeta, "vídeo");
+  await appendGroup(sfxList, sfxMeta, "ambiente");
 
   const manifest: BinaryManifest = {
     app: "ordo",
@@ -304,6 +317,7 @@ export const prepareOrdoExport = async (
     activeNoteId: doc.activeNoteId,
     activePdfId: doc.activePdfId,
     owlbearOpened: doc.owlbearOpened,
+    sfx: sfxMeta,
     audios: audioMeta,
     pdfs: pdfMeta,
     videos: videoMeta,
@@ -388,6 +402,7 @@ const parseBinaryFile = async (file: File): Promise<OrdoDoc | null> => {
           source: media.source === "youtube" || media.source === "web" ? media.source : "file",
           videoId: media.videoId,
           url: media.url,
+          volume: typeof media.volume === "number" ? media.volume : undefined,
         });
       }
       return result;
@@ -423,6 +438,7 @@ const parseBinaryFile = async (file: File): Promise<OrdoDoc | null> => {
       pdfs,
       activePdfId,
       videos,
+      sfx: await readGroup(Array.isArray(manifest.sfx) ? manifest.sfx : []),
       owlbearOpened: !!manifest.owlbearOpened,
     };
   } catch {
