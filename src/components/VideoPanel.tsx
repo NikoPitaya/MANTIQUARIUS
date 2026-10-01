@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Film, Plus, Pencil, Trash2, Upload, MonitorUp, Square, TriangleAlert, Clapperboard, X,
-  Image as ImageIcon,
+  Image as ImageIcon, GripVertical, ArrowUpToLine,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToUint8, stripExt, uid } from "../lib/ordo";
@@ -9,6 +9,7 @@ import { PanelChrome, HeaderIconBtn } from "./PanelChrome";
 import { ContextMenuView, useContextMenu } from "./ContextMenu";
 import { VolumeSlider } from "./VolumeSlider";
 import { lsGet, lsSet } from "../lib/store";
+import { useReorder } from "../lib/useReorder";
 
 interface Props {
   videos: OrdoMedia[];
@@ -97,6 +98,7 @@ function VideoPanelInner({ videos, onChange }: Props) {
   const blobCache = useRef(new Map<string, Blob>());
   const inputRef = useRef<HTMLInputElement>(null);
   const { menu, open, close } = useContextMenu();
+  const { dragProps, markerCls, move } = useReorder(videos, (next) => onChangeRef.current(next));
 
   const videosRef = useRef(videos);
   useEffect(() => { videosRef.current = videos; });
@@ -429,11 +431,12 @@ function VideoPanelInner({ videos, onChange }: Props) {
           </div>
         ) : (
           <div className="os-scroll min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
-            {videos.map((m) => {
+            {videos.map((m, i) => {
               const active = playingId === m.id;
               return (
                 <div
                   key={m.id}
+                  {...dragProps(i)}
                   onContextMenu={(e) =>
                     open(e, [
                       {
@@ -444,15 +447,22 @@ function VideoPanelInner({ videos, onChange }: Props) {
                           setRenameVal(m.name);
                         },
                       },
+                      { label: "mover para o topo", icon: ArrowUpToLine, onClick: () => move(i, 0) },
                       { label: "remover", icon: Trash2, danger: true, onClick: () => remove(m.id) },
                     ])
                   }
-                  className={`group relative flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${
+                  className={`group relative flex items-center gap-2 rounded-xl border px-2 py-2.5 transition-all ${
                     active
                       ? "border-acid-500/50 bg-acid-400/[0.08]"
                       : "border-carbon-700 bg-carbon-850/60 hover:border-carbon-500 hover:bg-carbon-800"
-                  }`}
+                  } ${markerCls(i)}`}
                 >
+                  <span title="arraste para reordenar" className="shrink-0 cursor-grab active:cursor-grabbing">
+                    <GripVertical
+                      size={13}
+                      className="text-carbon-500 opacity-40 transition-opacity group-hover:opacity-80"
+                    />
+                  </span>
                   <button
                     onClick={() => play(m.id)}
                     title={

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Music, Plus, Pencil, Trash2, Upload, Repeat, LoaderCircle, X, Link2, TriangleAlert, PlayCircle,
+  GripVertical, ArrowUpToLine,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToObjectURL, stripExt, uid } from "../lib/ordo";
@@ -8,6 +9,7 @@ import { PanelChrome, HeaderIconBtn } from "./PanelChrome";
 import { ContextMenuView, useContextMenu } from "./ContextMenu";
 import { VolumeSlider } from "./VolumeSlider";
 import { lsGet, lsSet } from "../lib/store";
+import { useReorder } from "../lib/useReorder";
 import type { YTPlayer } from "../lib/youtube";
 import { parseYouTubeId, fetchYouTubeTitle, loadYouTubeAPI } from "../lib/youtube";
 
@@ -40,6 +42,7 @@ function AudioPanelInner({ audios, onChange }: Props) {
   const ytCreating = useRef(new Map<string, Promise<YTPlayer | null>>());
   const ytVolumes = useRef(new Map<string, number>());
   const { menu, open, close } = useContextMenu();
+  const { dragProps, markerCls, move } = useReorder(audios, (next) => onChangeRef.current(next));
 
   const audiosRef = useRef(audios);
   useEffect(() => { audiosRef.current = audios; });
@@ -498,12 +501,13 @@ function AudioPanelInner({ audios, onChange }: Props) {
           </div>
         ) : (
           <div className="os-scroll min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
-            {audios.map((m) => {
+            {audios.map((m, i) => {
               const active = playingId === m.id;
               const prep = m.source === "youtube" ? ytPrepared[m.id] : undefined;
               return (
                 <div
                   key={m.id}
+                  {...dragProps(i)}
                   onContextMenu={(e) =>
                     open(e, [
                       {
@@ -514,15 +518,22 @@ function AudioPanelInner({ audios, onChange }: Props) {
                           setRenameVal(m.name);
                         },
                       },
+                      { label: "mover para o topo", icon: ArrowUpToLine, onClick: () => move(i, 0) },
                       { label: "remover", icon: Trash2, danger: true, onClick: () => remove(m.id) },
                     ])
                   }
-                  className={`group relative flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all ${
+                  className={`group relative flex items-center gap-2 rounded-xl border px-2 py-2.5 transition-all ${
                     active
                       ? "border-acid-500/50 bg-acid-400/[0.08]"
                       : "border-carbon-700 bg-carbon-850/60 hover:border-carbon-500 hover:bg-carbon-800"
-                  }`}
+                  } ${markerCls(i)}`}
                 >
+                  <span title="arraste para reordenar" className="shrink-0 cursor-grab active:cursor-grabbing">
+                    <GripVertical
+                      size={13}
+                      className="text-carbon-500 opacity-40 transition-opacity group-hover:opacity-80"
+                    />
+                  </span>
                   <button
                     onClick={() => toggle(m.id)}
                     title={active ? "parar (reinicia do zero)" : "tocar em loop"}

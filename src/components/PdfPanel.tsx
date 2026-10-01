@@ -4,11 +4,12 @@ import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import {
   FileText, PanelLeftClose, PanelLeftOpen, Plus, Trash2, Upload, LoaderCircle,
   TriangleAlert, Lock, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize,
-  Globe, Link2, X, ExternalLink, RotateCw,
+  Globe, Link2, X, ExternalLink, RotateCw, ScreenShare, Square, Focus, MonitorUp, GripVertical,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToUint8, stripExt, uid } from "../lib/ordo";
 import { lsGet, lsSet } from "../lib/store";
+import { useReorder } from "../lib/useReorder";
 import { PanelChrome, HeaderIconBtn } from "./PanelChrome";
 
 interface Props {
@@ -59,6 +60,14 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
   const [linkUrl, setLinkUrl] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
   const [frameKey, setFrameKey] = useState(0);
+  const [webMode, setWebMode] = useState<Record<string, "frame" | "mirror">>({});
+  const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [winOpenId, setWinOpenId] = useState<string | null>(null);
+  const [mirrorBusy, setMirrorBusy] = useState(false);
+  const [mirrorError, setMirrorError] = useState<string | null>(null);
+  const webWin = useRef<Window | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const mirrorVideoRef = useRef<HTMLVideoElement>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -81,6 +90,8 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
   useEffect(() => { onChangeRef.current = onChange; });
   const zoomRef = useRef(zoom);
   useEffect(() => { zoomRef.current = zoom; });
+
+  const { dragProps, markerCls } = useReorder(pdfs, (next) => onChangeRef.current(next));
 
   const setSb = (v: boolean) => {
     setSbOpen(v);
@@ -474,6 +485,81 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
     setLinkOpen(false);
   }, [linkUrl]);
 
+  /* ---------------- site em janela real + espelho ---------------- */
+  const stopMirror = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (mirrorVideoRef.current) mirrorVideoRef.current.srcObject = null;
+    setStreamingId(null);
+  }, []);
+
+  const openWebWindow = useCallback((item: OrdoMedia) => {
+    setMirrorError(null);
+    const w = window.open(item.url, "ordo-web", "popup,width=1280,height=860");
+    if (!w) {
+      setMirrorError("o navegador bloqueou o pop-up — permita pop-ups e tente de novo.");
+      return null;
+    }
+    webWin.current = w;
+    setWinOpenId(item.id);
+    return w;
+  }, []);
+
+  const focusWebWindow = useCallback(
+    (item: OrdoMedia) => {
+      if (webWin.current && !webWin.current.closed) webWin.current.focus();
+      else openWebWindow(item);
+    },
+    [openWebWindow]
+  );
+
+  const startMirror = useCallback(
+    async (item: OrdoMedia) => {
+      setMirrorError(null);
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        setMirrorError("seu navegador não permite espelhar janelas aqui (precisa de https).");
+        return;
+      }
+      setMirrorBusy(true);
+      try {
+        stopMirror();
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 30 },
+          audio: false,
+        });
+        streamRef.current = stream;
+        stream.getVideoTracks()[0]?.addEventListener("ended", stopMirror);
+        if (mirrorVideoRef.current) {
+          mirrorVideoRef.current.srcObject = stream;
+          await mirrorVideoRef.current.play().catch(() => undefined);
+        }
+        setStreamingId(item.id);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "NotAllowedError") {
+          setMirrorError("captura cancelada — escolha a janela do site para espelhar.");
+        } else {
+          setMirrorError("não foi possível espelhar a janela neste navegador.");
+        }
+      } finally {
+        setMirrorBusy(false);
+      }
+    },
+    [stopMirror]
+  );
+
+  /* acompanha se a janela do site continua aberta */
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (webWin.current?.closed) {
+        webWin.current = null;
+        setWinOpenId(null);
+      }
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => stopMirror, [stopMirror]);
+
   const removePdf = useCallback((id: string) => {
     const doc = cache.current.get(id);
     if (doc) {
@@ -498,6 +584,8 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
   const pageWidth = Math.max(160, (containerW - 28) * zoom);
   const activeItem = pdfs.find((p) => p.id === activePdfId) ?? null;
   const activeWeb = activeItem?.source === "web" && activeItem.url ? activeItem : null;
+  const activeMode = activeWeb ? webMode[activeWeb.id] ?? "frame" : "frame";
+  const isMirroring = !!activeWeb && streamingId === activeWeb.id;
 
   return (
     <PanelChrome
@@ -528,16 +616,23 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
             </button>
           </div>
           <div className="os-scroll min-h-0 flex-1 space-y-1 overflow-y-auto p-1.5">
-            {pdfs.map((p) => (
+            {pdfs.map((p, i) => (
               <div
                 key={p.id}
+                {...dragProps(i)}
                 onClick={() => onChange(pdfsRef.current, p.id)}
-                className={`group flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-2 transition-colors ${
+                className={`group relative flex cursor-pointer items-center gap-1.5 rounded-lg border px-1.5 py-2 transition-colors ${
                   p.id === activePdfId
                     ? "border-acid-500/40 bg-acid-400/[0.07]"
                     : "border-transparent hover:bg-carbon-800/70"
-                }`}
+                } ${markerCls(i)}`}
               >
+                <span title="arraste para reordenar" className="shrink-0 cursor-grab active:cursor-grabbing">
+                  <GripVertical
+                    size={12}
+                    className="text-carbon-500 opacity-40 transition-opacity group-hover:opacity-80"
+                  />
+                </span>
                 {p.source === "web" ? (
                   <Globe size={13} className={`shrink-0 ${p.id === activePdfId ? "text-acid-400" : "text-carbon-400"}`} />
                 ) : (
@@ -577,20 +672,79 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
         }}
       >
         {activeWeb ? (
-          /* ---------- navegador embutido ---------- */
+          /* ---------- site: modo embutido ou janela espelhada ---------- */
           <>
-            <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-carbon-700/70 px-2">
+            <div className="flex h-9 shrink-0 items-center gap-1 border-b border-carbon-700/70 px-2">
               <Globe size={13} className="shrink-0 text-acid-400" />
               <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-carbon-300" title={activeWeb.url}>
                 {activeWeb.url}
               </span>
-              <button
-                title="recarregar"
-                onClick={() => setFrameKey((k) => k + 1)}
-                className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md text-carbon-300 transition-colors hover:bg-carbon-700/60 hover:text-white"
-              >
-                <RotateCw size={12.5} />
-              </button>
+
+              {/* alterna entre embutido e janela real espelhada */}
+              <div className="flex shrink-0 items-center overflow-hidden rounded-md border border-carbon-600">
+                <button
+                  title="modo embutido (rápido, mas alguns sites bloqueiam)"
+                  onClick={() => {
+                    stopMirror();
+                    setWebMode((m) => ({ ...m, [activeWeb.id]: "frame" }));
+                  }}
+                  className={`px-2 py-1 font-mono text-[9px] uppercase tracking-wider transition-colors ${
+                    activeMode === "frame" ? "bg-acid-400/15 text-acid-300" : "text-carbon-400 hover:text-white"
+                  }`}
+                >
+                  embutido
+                </button>
+                <button
+                  title="janela real espelhada (funciona com qualquer site)"
+                  onClick={() => setWebMode((m) => ({ ...m, [activeWeb.id]: "mirror" }))}
+                  className={`px-2 py-1 font-mono text-[9px] uppercase tracking-wider transition-colors ${
+                    activeMode === "mirror" ? "bg-acid-400/15 text-acid-300" : "text-carbon-400 hover:text-white"
+                  }`}
+                >
+                  janela
+                </button>
+              </div>
+
+              {activeMode === "frame" ? (
+                <button
+                  title="recarregar"
+                  onClick={() => setFrameKey((k) => k + 1)}
+                  className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md text-carbon-300 transition-colors hover:bg-carbon-700/60 hover:text-white"
+                >
+                  <RotateCw size={12.5} />
+                </button>
+              ) : (
+                <>
+                  {isMirroring && (
+                    <>
+                      <button
+                        title="trocar janela espelhada"
+                        onClick={() => void startMirror(activeWeb)}
+                        className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md text-carbon-300 transition-colors hover:bg-carbon-700/60 hover:text-white"
+                      >
+                        <RotateCw size={12.5} />
+                      </button>
+                      <button
+                        title="parar espelhamento"
+                        onClick={stopMirror}
+                        className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md text-carbon-300 transition-colors hover:bg-carbon-700/60 hover:text-white"
+                      >
+                        <Square size={11} />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    title="focar a janela do site"
+                    onClick={() => focusWebWindow(activeWeb)}
+                    className={`flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-carbon-700/60 hover:text-white ${
+                      winOpenId === activeWeb.id ? "text-acid-300" : "text-carbon-300"
+                    }`}
+                  >
+                    <Focus size={12.5} />
+                  </button>
+                </>
+              )}
+
               <button
                 title="abrir em nova janela"
                 onClick={() => window.open(activeWeb.url, "_blank", "noopener")}
@@ -599,21 +753,77 @@ function PdfPanelInner({ pdfs, activePdfId, onChange }: Props) {
                 <ExternalLink size={12.5} />
               </button>
             </div>
-            <div className="relative min-h-0 flex-1 bg-white">
-              <iframe
-                key={`${activeWeb.id}-${frameKey}`}
-                src={activeWeb.url}
-                title={activeWeb.name}
-                className="h-full w-full border-0"
-                referrerPolicy="no-referrer"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-              />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-2">
-                <span className="pointer-events-auto rounded-full border border-carbon-600 bg-carbon-950/90 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-carbon-400 backdrop-blur">
-                  tela em branco? o site bloqueia incorporação — use a seta
-                </span>
+
+            {activeMode === "frame" ? (
+              <div className="relative min-h-0 flex-1 bg-white">
+                <iframe
+                  key={`${activeWeb.id}-${frameKey}`}
+                  src={activeWeb.url}
+                  title={activeWeb.name}
+                  className="h-full w-full border-0"
+                  referrerPolicy="no-referrer"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-2">
+                  <span className="pointer-events-auto rounded-full border border-carbon-600 bg-carbon-950/90 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-carbon-400 backdrop-blur">
+                    em branco? troque para o modo janela
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="relative min-h-0 flex-1 bg-black">
+                <video
+                  ref={mirrorVideoRef}
+                  muted
+                  playsInline
+                  autoPlay
+                  onClick={() => focusWebWindow(activeWeb)}
+                  title="clique para usar a janela do site"
+                  className={`absolute inset-0 h-full w-full object-contain ${isMirroring ? "cursor-pointer" : "hidden"}`}
+                />
+
+                {isMirroring && (
+                  <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full border border-ember-400/40 bg-carbon-950/80 px-2.5 py-1 backdrop-blur">
+                    <span className="h-1.5 w-1.5 rounded-full bg-ember-400 animate-[pulse-dot_1.4s_ease-in-out_infinite]" />
+                    <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-ember-400">
+                      ao vivo
+                    </span>
+                  </div>
+                )}
+
+                {!isMirroring && (
+                  <div className="flex h-full flex-col items-center justify-center gap-4 p-5 text-center">
+                    <p className="max-w-[300px] text-[12px] leading-relaxed text-carbon-300">
+                      abra o site em uma janela real e espelhe aqui — funciona com{" "}
+                      <span className="font-medium text-white">qualquer site</span>, mesmo os que
+                      bloqueiam incorporação.
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        onClick={() => openWebWindow(activeWeb)}
+                        className="flex items-center gap-2 rounded-xl bg-acid-400 px-4 py-2.5 text-[12.5px] font-bold text-carbon-950 transition-colors hover:bg-acid-300"
+                      >
+                        <MonitorUp size={14} />
+                        {winOpenId === activeWeb.id ? "reabrir janela" : "abrir o site"}
+                      </button>
+                      <button
+                        onClick={() => void startMirror(activeWeb)}
+                        disabled={mirrorBusy}
+                        className="flex items-center gap-2 rounded-xl border border-carbon-600 px-4 py-2.5 text-[12.5px] font-medium text-carbon-100 transition-colors hover:border-acid-500/50 hover:text-acid-300 disabled:opacity-60"
+                      >
+                        <ScreenShare size={14} />
+                        {mirrorBusy ? "aguardando..." : "espelhar janela"}
+                      </button>
+                    </div>
+                    {mirrorError && (
+                      <p className="anim-pop-in max-w-[300px] rounded-lg border border-ember-400/40 bg-ember-400/10 px-3 py-2 text-[11.5px] leading-snug text-ember-400">
+                        {mirrorError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         ) : null}
 
