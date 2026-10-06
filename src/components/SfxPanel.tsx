@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AudioWaveform, Plus, Pencil, Trash2, Upload, Repeat, X, Link2, TriangleAlert,
-  PlayCircle, LoaderCircle, Volume2, Square, GripVertical, ArrowUpToLine,
+  PlayCircle, LoaderCircle, Volume2, Square, GripVertical, ArrowUpToLine, LogIn, LogOut,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToObjectURL, stripExt, uid } from "../lib/ordo";
@@ -19,6 +19,25 @@ interface Props {
 
 const DEFAULT_VOL = 0.7;
 
+function FadeBtn({
+  on, label, onClick, icon,
+}: { on: boolean; label: string; onClick: () => void; icon: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={`${label} ${on ? "ligado — clique para desligar" : "desligado — clique para ligar"}`}
+      aria-label={label}
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-90 ${
+        on
+          ? "border-acid-500/50 bg-acid-400/15 text-acid-300"
+          : "border-carbon-600 text-carbon-400 hover:bg-carbon-800 hover:text-white"
+      }`}
+    >
+      {icon}
+    </button>
+  );
+}
+
 export function SfxPanel({ sfx, onChange }: Props) {
   /** ids tocando agora — ambientes podem tocar em camadas */
   const [playing, setPlaying] = useState<Set<string>>(new Set());
@@ -34,6 +53,8 @@ export function SfxPanel({ sfx, onChange }: Props) {
     const raw = Number(lsGet("ordo:vol:sfxmaster"));
     return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 0.8;
   });
+  const [fadeIn, setFadeIn] = useState(() => lsGet("ordo:fade:sfxin") !== "0");
+  const [fadeOut, setFadeOut] = useState(() => lsGet("ordo:fade:sfxout") !== "0");
 
   const els = useRef(new Map<string, HTMLAudioElement>());
   const ytPlayers = useRef(new Map<string, YTPlayer>());
@@ -51,6 +72,17 @@ export function SfxPanel({ sfx, onChange }: Props) {
   const playingRef = useRef(playing);
   useEffect(() => { playingRef.current = playing; });
 
+  const fadeInRef = useRef(fadeIn);
+  const fadeOutRef = useRef(fadeOut);
+  useEffect(() => {
+    fadeInRef.current = fadeIn;
+    lsSet("ordo:fade:sfxin", fadeIn ? "1" : "0");
+  }, [fadeIn]);
+  useEffect(() => {
+    fadeOutRef.current = fadeOut;
+    lsSet("ordo:fade:sfxout", fadeOut ? "1" : "0");
+  }, [fadeOut]);
+
   const { dragProps, markerCls, move } = useReorder(sfx, (next) => onChangeRef.current(next));
 
   const volOf = useCallback(
@@ -61,15 +93,75 @@ export function SfxPanel({ sfx, onChange }: Props) {
   const isYT = (m: OrdoMedia) => m.source === "youtube" && !!m.videoId;
 
   /* ---------- volume ---------- */
-  const applyVol = useCallback((m: OrdoMedia) => {
-    const v = (typeof m.volume === "number" ? m.volume : DEFAULT_VOL) * masterRef.current;
-    const el = els.current.get(m.id);
-    if (el) el.volume = Math.max(0, Math.min(1, v));
-    const p = ytPlayers.current.get(m.id);
+  /** multiplicador do fade por item (0 = mudo, 1 = volume cheio) */
+  const fadeMul = useRef(new Map<string, number>());
+  const fades = useRef(new Map<string, number>());
+
+  const setRawVol = useCallback((id: string, v: number) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    const el = els.current.get(id);
+    if (el) el.volume = clamped;
+    const p = ytPlayers.current.get(id);
     if (p) {
-      try { p.setVolume(Math.round(Math.max(0, Math.min(1, v)) * 100)); } catch { /* carregando */ }
+      try { p.setVolume(Math.round(clamped * 100)); } catch { /* carregando */ }
     }
   }, []);
+
+  const applyVol = useCallback(
+    (m: OrdoMedia) => {
+      const base = (typeof m.volume === "number" ? m.volume : DEFAULT_VOL) * masterRef.current;
+      setRawVol(m.id, base * (fadeMul.current.get(m.id) ?? 1));
+    },
+    [setRawVol]
+  );
+
+  const cancelFade = useCallback((id: string) => {
+    const raf = fades.current.get(id);
+    if (raf) {
+      cancelAnimationFrame(raf);
+      fades.current.delete(id);
+    }
+  }, []);
+
+  const FADE_MS = 1200;
+
+  /** anima o multiplicador do item entre o valor atual e `to` */
+  const fadeItem = useCallback(
+    (id: string, to: number, ms: number, done?: () => void) => {
+      cancelFade(id);
+      const m = sfxRef.current.find((x) => x.id === id);
+      const base = m
+        ? (typeof m.volume === "number" ? m.volume : DEFAULT_VOL) * masterRef.current
+        : 0;
+      const from = fadeMul.current.get(id) ?? (to > 0 ? 0 : 1);
+      if (ms <= 0) {
+        fadeMul.current.set(id, to);
+        setRawVol(id, base * to);
+        done?.();
+        return;
+      }
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ms);
+        const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+        const mul = from + (to - from) * eased;
+        fadeMul.current.set(id, mul);
+        // relê o volume atual do item, para o slider continuar funcionando durante o fade
+        const cur = sfxRef.current.find((x) => x.id === id);
+        const b = cur
+          ? (typeof cur.volume === "number" ? cur.volume : DEFAULT_VOL) * masterRef.current
+          : base;
+        setRawVol(id, b * mul);
+        if (t < 1) fades.current.set(id, requestAnimationFrame(step));
+        else {
+          fades.current.delete(id);
+          done?.();
+        }
+      };
+      fades.current.set(id, requestAnimationFrame(step));
+    },
+    [cancelFade, setRawVol]
+  );
 
   useEffect(() => {
     lsSet("ordo:vol:sfxmaster", String(master));
@@ -155,7 +247,10 @@ export function SfxPanel({ sfx, onChange }: Props) {
   }, [sfx, ensureYT]);
 
   /* ---------- play / stop (em camadas) ---------- */
-  const stopOne = useCallback((id: string) => {
+  /** corta na hora, sem fade (usado ao remover/desmontar) */
+  const hardStop = useCallback((id: string) => {
+    cancelFade(id);
+    fadeMul.current.set(id, 1);
     const el = els.current.get(id);
     if (el) {
       el.pause();
@@ -173,7 +268,38 @@ export function SfxPanel({ sfx, onChange }: Props) {
       n.delete(id);
       return n;
     });
-  }, []);
+  }, [cancelFade]);
+
+  /** para com fade out (quando ligado) e reinicia do zero ao terminar */
+  const stopOne = useCallback(
+    (id: string) => {
+      setPlaying((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+      if (!fadeOutRef.current) {
+        hardStop(id);
+        return;
+      }
+      fadeItem(id, 0, FADE_MS, () => {
+        const el = els.current.get(id);
+        if (el) {
+          el.pause();
+          el.currentTime = 0;
+        }
+        const p = ytPlayers.current.get(id);
+        if (p) {
+          try {
+            p.pauseVideo();
+            p.seekTo(0, true);
+          } catch { /* ignore */ }
+        }
+        fadeMul.current.set(id, 1); // pronto para a próxima vez
+      });
+    },
+    [fadeItem, hardStop]
+  );
 
   const toggle = useCallback(
     (id: string) => {
@@ -185,6 +311,9 @@ export function SfxPanel({ sfx, onChange }: Props) {
       }
 
       setPlaying((prev) => new Set(prev).add(id));
+      cancelFade(id);
+      // com fade-in entra do silêncio; sem ele já começa no volume cheio
+      fadeMul.current.set(id, fadeInRef.current ? 0 : 1);
 
       if (isYT(m)) {
         const start = (p: YTPlayer | null) => {
@@ -193,6 +322,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
             applyVol(m);
             p.seekTo(0, true);
             p.playVideo();
+            if (fadeInRef.current) fadeItem(id, 1, FADE_MS);
           } catch { /* ignore */ }
           setLoadingIds((prev) => {
             const n = new Set(prev);
@@ -204,7 +334,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
         if (ready) start(ready);
         else {
           setLoadingIds((prev) => new Set(prev).add(id));
-          void ensureYT(m).then(start).catch(() => stopOne(id));
+          void ensureYT(m).then(start).catch(() => hardStop(id));
         }
         return;
       }
@@ -212,9 +342,13 @@ export function SfxPanel({ sfx, onChange }: Props) {
       const a = getEl(m);
       applyVol(m);
       a.currentTime = 0;
-      a.play().catch(() => stopOne(id));
+      a.play()
+        .then(() => {
+          if (fadeInRef.current) fadeItem(id, 1, FADE_MS);
+        })
+        .catch(() => hardStop(id));
     },
-    [applyVol, ensureYT, getEl, stopOne]
+    [applyVol, cancelFade, ensureYT, fadeItem, getEl, hardStop, stopOne]
   );
 
   const stopAll = useCallback(() => {
@@ -285,7 +419,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
 
   const remove = useCallback(
     (id: string) => {
-      stopOne(id);
+      hardStop(id);
       const a = els.current.get(id);
       if (a) URL.revokeObjectURL(a.src);
       els.current.delete(id);
@@ -296,7 +430,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
       }
       onChangeRef.current(sfxRef.current.filter((x) => x.id !== id));
     },
-    [stopOne]
+    [hardStop]
   );
 
   const setVolume = useCallback(
@@ -328,15 +462,27 @@ export function SfxPanel({ sfx, onChange }: Props) {
         void addFiles(e.dataTransfer.files);
       }}
     >
-      {/* ação de adicionar */}
-      <div className="shrink-0 border-b border-carbon-700/60 p-2">
+      {/* ação de adicionar + controles de fade */}
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-carbon-700/60 p-2">
         <button
           onClick={() => setChooser(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-carbon-500 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-carbon-200 transition-all hover:border-acid-500/60 hover:text-acid-300 active:scale-[0.98]"
+          className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-dashed border-carbon-500 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-carbon-200 transition-all hover:border-acid-500/60 hover:text-acid-300 active:scale-[0.98]"
         >
           <Plus size={12} strokeWidth={2.4} />
           adicionar som
         </button>
+        <FadeBtn
+          on={fadeIn}
+          label="fade in"
+          onClick={() => setFadeIn((v) => !v)}
+          icon={<LogIn size={13} />}
+        />
+        <FadeBtn
+          on={fadeOut}
+          label="fade out"
+          onClick={() => setFadeOut((v) => !v)}
+          icon={<LogOut size={13} />}
+        />
       </div>
 
       {sfx.length === 0 ? (
