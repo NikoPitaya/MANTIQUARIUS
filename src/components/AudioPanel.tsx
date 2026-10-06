@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Music, Plus, Pencil, Trash2, Upload, Repeat, LoaderCircle, X, Link2, TriangleAlert, PlayCircle,
-  GripVertical, ArrowUpToLine,
+  GripVertical, ArrowUpToLine, LogIn, LogOut,
 } from "lucide-react";
 import type { OrdoMedia } from "../types";
 import { fileToDataURL, dataURLToObjectURL, stripExt, uid } from "../lib/ordo";
@@ -27,6 +27,8 @@ const readVol = (key: string): number => {
 function AudioPanelInner({ audios, onChange }: Props) {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [volume, setVolume] = useState(() => readVol("ordo:vol:audio"));
+  const [fadeIn, setFadeIn] = useState(() => lsGet("ordo:fade:in") !== "0");
+  const [fadeOut, setFadeOut] = useState(() => lsGet("ordo:fade:out") !== "0");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
   const [busy, setBusy] = useState(false);
@@ -54,6 +56,18 @@ function AudioPanelInner({ audios, onChange }: Props) {
   useEffect(() => { volumeRef.current = volume; });
   const playingRef = useRef(playingId);
   useEffect(() => { playingRef.current = playingId; });
+
+  // duração dos fades: 0 desativa a transição correspondente
+  const fadeInRef = useRef(fadeIn);
+  const fadeOutRef = useRef(fadeOut);
+  useEffect(() => {
+    fadeInRef.current = fadeIn;
+    lsSet("ordo:fade:in", fadeIn ? "1" : "0");
+  }, [fadeIn]);
+  useEffect(() => {
+    fadeOutRef.current = fadeOut;
+    lsSet("ordo:fade:out", fadeOut ? "1" : "0");
+  }, [fadeOut]);
 
   // Estado e referência precisam mudar juntos. O player do YouTube pode iniciar
   // no mesmo tick do clique, antes de o React executar o próximo useEffect.
@@ -210,7 +224,7 @@ function AudioPanelInner({ audios, onChange }: Props) {
       if (!m) return;
       if (!isYT(m) && !els.current.get(id)) return;
       const c = ctrl(m);
-      fadeTo(id, c, 0, FADE_MS, () => {
+      fadeTo(id, c, 0, fadeOutRef.current ? FADE_MS : 0, () => {
         c.pauseReset(); // reinicia do zero ao parar
         c.set(volumeRef.current);
       });
@@ -326,16 +340,16 @@ function AudioPanelInner({ audios, onChange }: Props) {
         setYtError(null);
         setPlaying(id);
         cancelFade(id);
-        ytVolumes.current.set(id, 0);
+        ytVolumes.current.set(id, fadeInRef.current ? 0 : volumeRef.current);
         const start = (p: YTPlayer | null) => {
           if (!p || playingRef.current !== id) return;
           try {
-            p.setVolume(0);
+            p.setVolume(fadeInRef.current ? 0 : Math.round(volumeRef.current * 100));
             // O vídeo já foi preparado por cueVideoById no preload. Recarregá-lo
             // aqui anulava o preload e introduzia outra espera desnecessária.
             p.seekTo(0, true);
             p.playVideo();
-            fadeTo(id, ctrl(m), volumeRef.current, FADE_MS);
+            fadeTo(id, ctrl(m), volumeRef.current, fadeInRef.current ? FADE_MS : 0);
           } catch {
             setYtError("não foi possível iniciar esta faixa do youtube.");
             setPlaying(null);
@@ -362,9 +376,10 @@ function AudioPanelInner({ audios, onChange }: Props) {
       const a = getEl(m);
       cancelFade(id);
       a.currentTime = 0;
-      a.volume = 0; // e a nova entra em fade in
+      // com fade-in começa do silêncio; sem fade-in já entra no volume cheio
+      a.volume = fadeInRef.current ? 0 : volumeRef.current;
       a.play()
-        .then(() => fadeTo(id, ctrl(m), volumeRef.current, FADE_MS))
+        .then(() => fadeTo(id, ctrl(m), volumeRef.current, fadeInRef.current ? FADE_MS : 0))
         .catch(() => {
           a.volume = volumeRef.current;
           setPlaying(null);
@@ -468,9 +483,25 @@ function AudioPanelInner({ audios, onChange }: Props) {
       icon={Music}
       className="col-span-6 row-span-1 lg:col-span-2"
       actions={
-        <HeaderIconBtn title="adicionar áudio" onClick={() => setChooser(true)} accent>
-          <Plus size={13} strokeWidth={2.4} />
-        </HeaderIconBtn>
+        <>
+          <HeaderIconBtn
+            title={fadeIn ? "fade in ligado — clique para desligar" : "fade in desligado — clique para ligar"}
+            onClick={() => setFadeIn((v) => !v)}
+            accent={fadeIn}
+          >
+            <LogIn size={12.5} />
+          </HeaderIconBtn>
+          <HeaderIconBtn
+            title={fadeOut ? "fade out ligado — clique para desligar" : "fade out desligado — clique para ligar"}
+            onClick={() => setFadeOut((v) => !v)}
+            accent={fadeOut}
+          >
+            <LogOut size={12.5} />
+          </HeaderIconBtn>
+          <HeaderIconBtn title="adicionar áudio" onClick={() => setChooser(true)} accent>
+            <Plus size={13} strokeWidth={2.4} />
+          </HeaderIconBtn>
+        </>
       }
     >
       <div
