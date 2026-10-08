@@ -69,6 +69,8 @@ const asMedia = (x: unknown): OrdoMedia | null => {
     videoId: typeof m.videoId === "string" ? m.videoId : undefined,
     url: typeof m.url === "string" ? m.url : undefined,
     volume: typeof m.volume === "number" ? m.volume : undefined,
+    fadeIn: typeof m.fadeIn === "boolean" ? m.fadeIn : undefined,
+    fadeOut: typeof m.fadeOut === "boolean" ? m.fadeOut : undefined,
   };
 };
 
@@ -167,6 +169,8 @@ interface BinaryMedia {
   videoId?: string;
   url?: string;
   volume?: number;
+  fadeIn?: boolean;
+  fadeOut?: boolean;
 }
 
 interface BinaryManifest {
@@ -268,6 +272,9 @@ export const prepareOrdoExport = async (
           size: 0,
           source: "youtube",
           videoId: media.videoId,
+          volume: media.volume,
+          fadeIn: media.fadeIn,
+          fadeOut: media.fadeOut,
         });
         continue;
       }
@@ -297,6 +304,8 @@ export const prepareOrdoExport = async (
         lastPage: media.lastPage,
         source: "file",
         volume: media.volume,
+        fadeIn: media.fadeIn,
+        fadeOut: media.fadeOut,
       });
       blobParts.push(result.blob);
     }
@@ -403,6 +412,8 @@ const parseBinaryFile = async (file: File): Promise<OrdoDoc | null> => {
           videoId: media.videoId,
           url: media.url,
           volume: typeof media.volume === "number" ? media.volume : undefined,
+          fadeIn: typeof media.fadeIn === "boolean" ? media.fadeIn : undefined,
+          fadeOut: typeof media.fadeOut === "boolean" ? media.fadeOut : undefined,
         });
       }
       return result;

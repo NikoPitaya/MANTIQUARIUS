@@ -47,6 +47,8 @@ export interface OrdoMedia {
   videoId?: string; // youtube
   url?: string; // site (web)
   volume?: number; // 0..1 — usado pelos sons de ambiente
+  fadeIn?: boolean; // entrada suave (padrão: ligado)
+  fadeOut?: boolean; // saída suave (padrão: ligado)
 }
 
 export interface OrdoDoc {
