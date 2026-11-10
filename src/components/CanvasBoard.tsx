@@ -76,7 +76,7 @@ export function CanvasBoard({ items, view, onChange }: Props) {
     if (!items.some((i) => i.type === "image")) return;
     didFixAspect.current = true;
     const fixed = fixImageAspect(items);
-    if (fixed !== items) commit(fixed);
+    if (fixed.some((item, index) => item !== items[index])) commit(fixed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
   const onChangeRef = useRef(onChange);
