@@ -421,13 +421,18 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       if (el) {
         let nw = Math.max(64, d.iw + dx / s);
         let nh = Math.max(48, d.ih + dy / s);
-        // imagens: mantém a proporção original ao escalar (o canto oposto fica fixo)
+        // imagens: mantém exatamente a proporção original ao escalar
         if (d.lockAspect && d.ih > 0) {
           const ratio = d.iw / d.ih;
-          if (nw / ratio >= nh) nh = nw / ratio;
-          else nw = nh * ratio;
-          nw = Math.max(64, nw);
-          nh = Math.max(48, nh);
+          // usa o arraste horizontal como base e deriva a altura dele —
+          // assim o retângulo que contém a imagem tem sempre a mesma proporção da foto
+          nw = Math.max(64, d.iw + dx / s);
+          nh = nw / ratio;
+          // garante altura mínima respeitando a proporção
+          if (nh < 48) {
+            nh = 48;
+            nw = nh * ratio;
+          }
         }
         el.style.width = `${nw}px`;
         el.style.height = `${nh}px`;
@@ -741,7 +746,7 @@ export function CanvasBoard({ items, view, onChange }: Props) {
                     src={it.src}
                     alt=""
                     draggable={false}
-                    className="pointer-events-none h-full w-full rounded-xl object-cover"
+                    className="pointer-events-none h-full w-full rounded-xl object-contain"
                   />
                 ) : it.type === "sticky" ? (
                   <div
