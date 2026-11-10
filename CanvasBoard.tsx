@@ -30,7 +30,15 @@ const clampZ = (z: number) => Math.min(MAX_Z, Math.max(MIN_Z, z));
 type Drag =
   | { kind: "pan"; startX: number; startY: number; ox: number; oy: number }
   | { kind: "move"; id: string; startX: number; startY: number; ix: number; iy: number }
-  | { kind: "resize"; id: string; startX: number; startY: number; iw: number; ih: number }
+  | {
+      kind: "resize";
+      id: string;
+      startX: number;
+      startY: number;
+      iw: number;
+      ih: number;
+      lockAspect: boolean; // imagens mantêm a proporção ao escalar
+    }
   | null;
 
 export function CanvasBoard({ items, view, onChange }: Props) {
@@ -310,7 +318,15 @@ export function CanvasBoard({ items, view, onChange }: Props) {
         const it = itemsRef.current.find((i) => i.id === selected);
         if (!it) return;
         e.preventDefault();
-        drag.current = { kind: "resize", id: it.id, startX: e.clientX, startY: e.clientY, iw: it.w, ih: it.h };
+        drag.current = {
+          kind: "resize",
+          id: it.id,
+          startX: e.clientX,
+          startY: e.clientY,
+          iw: it.w,
+          ih: it.h,
+          lockAspect: it.type === "image",
+        };
         setLiveRect({ id: it.id, x: it.x, y: it.y, w: it.w, h: it.h });
         return;
       }
@@ -403,8 +419,16 @@ export function CanvasBoard({ items, view, onChange }: Props) {
     } else if (d.kind === "resize") {
       const el = boardRef.current?.querySelector<HTMLElement>(`[data-card="${d.id}"]`);
       if (el) {
-        const nw = Math.max(64, d.iw + dx / s);
-        const nh = Math.max(48, d.ih + dy / s);
+        let nw = Math.max(64, d.iw + dx / s);
+        let nh = Math.max(48, d.ih + dy / s);
+        // imagens: mantém a proporção original ao escalar (o canto oposto fica fixo)
+        if (d.lockAspect && d.ih > 0) {
+          const ratio = d.iw / d.ih;
+          if (nw / ratio >= nh) nh = nw / ratio;
+          else nw = nh * ratio;
+          nw = Math.max(64, nw);
+          nh = Math.max(48, nh);
+        }
         el.style.width = `${nw}px`;
         el.style.height = `${nh}px`;
         setLiveRect((prev) => (prev && prev.id === d.id ? { ...prev, w: nw, h: nh } : prev));
