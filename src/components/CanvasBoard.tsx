@@ -357,6 +357,19 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       }
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
+      if (e.pointerType === "mouse" && e.button === 1) {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = {
+          kind: "pan",
+          startX: e.clientX,
+          startY: e.clientY,
+          ox: viewRef.current.tx,
+          oy: viewRef.current.ty,
+        };
+        return;
+      }
+
       // pinça com dois dedos
       if (pointers.current.size === 2) {
         const [a, b] = [...pointers.current.values()];
@@ -750,6 +763,9 @@ export function CanvasBoard({ items, view, onChange }: Props) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onAuxClick={(e) => {
+          if (e.button === 1) e.preventDefault();
+        }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
@@ -1155,7 +1171,9 @@ function CardText({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onDone}
-        onPointerDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => {
+          if (e.pointerType !== "mouse" || e.button !== 1) e.stopPropagation();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape") onDone();
           e.stopPropagation();
