@@ -30,7 +30,16 @@ const clampZ = (z: number) => Math.min(MAX_Z, Math.max(MIN_Z, z));
 type Drag =
   | { kind: "pan"; startX: number; startY: number; ox: number; oy: number }
   | { kind: "move"; id: string; startX: number; startY: number; ix: number; iy: number }
-  | { kind: "resize"; id: string; startX: number; startY: number; iw: number; ih: number }
+  | {
+      kind: "resize";
+      id: string;
+      startX: number;
+      startY: number;
+      iw: number;
+      ih: number;
+      lockAspect: boolean; // imagens mantêm a proporção ao escalar
+      ratio: number; // proporção real da foto (natural), fonte da verdade
+    }
   | null;
 
 export function CanvasBoard({ items, view, onChange }: Props) {
@@ -58,6 +67,18 @@ export function CanvasBoard({ items, view, onChange }: Props) {
 
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; });
+
+  // notas antigas podem ter imagens com a caixa desproporcional (resize livre);
+  // ao carregar o canvas, corrige a altura de cada imagem para casar com a foto
+  const didFixAspect = useRef(false);
+  useEffect(() => {
+    if (didFixAspect.current) return;
+    if (!items.some((i) => i.type === "image")) return;
+    didFixAspect.current = true;
+    const fixed = fixImageAspect(items);
+    if (fixed !== items) commit(fixed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
   const onChangeRef = useRef(onChange);
   useEffect(() => { onChangeRef.current = onChange; });
   const viewRef = useRef({ tx, ty, z });
@@ -79,6 +100,50 @@ export function CanvasBoard({ items, view, onChange }: Props) {
     (id: string, p: Partial<CanvasItem>) =>
       commit(itemsRef.current.map((it) => (it.id === id ? { ...it, ...p } : it))),
     [commit]
+  );
+
+  /** proporção real da imagem (natural); fallback para a do próprio item */
+  const imageRatioOf = (it: CanvasItem): number => {
+    const r = it.imgRatio ?? (it.nw && it.nh ? it.nw / it.nh : undefined);
+    if (r && isFinite(r) && r > 0) return r;
+    return it.h > 0 ? it.w / it.h : 1;
+  };
+
+  /** corrige itens de imagem cuja caixa perdeu a proporção da foto
+   * (notas antigas salvas com o resize livre) — deriva h de w */
+  const fixImageAspect = useCallback(
+    (list: CanvasItem[]): CanvasItem[] =>
+      list.map((it) => {
+        if (it.type !== "image") return it;
+        const ratio = imageRatioOf(it);
+        const img = new Image();
+        img.src = it.src ?? "";
+        if (!img.complete || !img.naturalWidth) return it; // ajusta quando carregar
+        const h = Math.max(48, Math.round(Math.max(64, it.w) / ratio));
+        if (Math.abs(it.h - h) < 1) return it;
+        return { ...it, nw: img.naturalWidth, nh: img.naturalHeight, imgRatio: ratio, h };
+      }),
+    []
+  );
+
+  /** ao carregar uma imagem no canvas, garante que a caixa siga a proporção */
+  const onImageLoad = useCallback(
+    (id: string, naturalW: number, naturalH: number) => {
+      if (!naturalW || !naturalH) return;
+      const it = itemsRef.current.find((i) => i.id === id);
+      if (!it || it.type !== "image") return;
+      const ratio = naturalW / naturalH;
+      const w = Math.max(64, it.w);
+      const h = Math.max(48, Math.round(w / ratio));
+      const same =
+        Math.abs(it.h - h) < 1 &&
+        Math.abs(it.w - w) < 1 &&
+        it.nw === naturalW &&
+        it.nh === naturalH;
+      if (same) return;
+      patchItem(id, { nw: naturalW, nh: naturalH, imgRatio: ratio, w, h });
+    },
+    [patchItem]
   );
 
   /** converte coordenadas da tela para coordenadas do quadro */
@@ -132,6 +197,9 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       const c = centerWorld();
       addItem("image", {
         src,
+        nw,
+        nh,
+        imgRatio: nw / nh,
         w,
         h: Math.round((w * nh) / nw),
         x: Math.round(c.x - w / 2),
@@ -349,7 +417,16 @@ export function CanvasBoard({ items, view, onChange }: Props) {
         const it = itemsRef.current.find((i) => i.id === selected);
         if (!it) return;
         e.preventDefault();
-        drag.current = { kind: "resize", id: it.id, startX: e.clientX, startY: e.clientY, iw: it.w, ih: it.h };
+        drag.current = {
+          kind: "resize",
+          id: it.id,
+          startX: e.clientX,
+          startY: e.clientY,
+          iw: it.w,
+          ih: it.h,
+          lockAspect: it.type === "image",
+          ratio: imageRatioOf(it),
+        };
         setLiveRect({ id: it.id, x: it.x, y: it.y, w: it.w, h: it.h });
         return;
       }
@@ -442,8 +519,27 @@ export function CanvasBoard({ items, view, onChange }: Props) {
     } else if (d.kind === "resize") {
       const el = boardRef.current?.querySelector<HTMLElement>(`[data-card="${d.id}"]`);
       if (el) {
-        const nw = Math.max(64, d.iw + dx / s);
-        const nh = Math.max(48, d.ih + dy / s);
+        let nw = Math.max(64, d.iw + dx / s);
+        let nh = Math.max(48, d.ih + dy / s);
+        // imagens: a caixa que contém a foto acompanha SEMPRE a proporção
+        // real da imagem — o arraste nunca deixa a caixa com outro formato.
+        // usa o eixo de maior deslocamento relativo como base e deriva o
+        // outro dele; os mínimos são aplicados de forma proporcional.
+        if (d.lockAspect && d.ratio > 0 && isFinite(d.ratio)) {
+          const sx = dx / s;
+          const sy = dy / s;
+          if (Math.abs(sy) * d.ratio >= Math.abs(sx)) {
+            nh = Math.max(48, d.ih + sy);
+            nw = nh * d.ratio;
+          } else {
+            nw = Math.max(64, d.iw + sx);
+            nh = nw / d.ratio;
+            if (nh < 48) {
+              nh = 48;
+              nw = nh * d.ratio;
+            }
+          }
+        }
         el.style.width = `${nw}px`;
         el.style.height = `${nh}px`;
         setLiveRect((prev) => (prev && prev.id === d.id ? { ...prev, w: nw, h: nh } : prev));
@@ -503,7 +599,19 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       if (d.kind === "move") {
         patchItem(d.id, { x: parseFloat(el.style.left), y: parseFloat(el.style.top) });
       } else {
-        patchItem(d.id, { w: parseFloat(el.style.width), h: parseFloat(el.style.height) });
+        let w = parseFloat(el.style.width);
+        let h = parseFloat(el.style.height);
+        // redepositos: trava a proporção da imagem na gravação final,
+        // mesmo que algo tenha desviado durante o arraste
+        const it = itemsRef.current.find((i) => i.id === d.id);
+        if (d.kind === "resize" && it?.type === "image") {
+          const ratio = imageRatioOf(it);
+          if (ratio > 0 && isFinite(ratio)) {
+            w = Math.max(64, w);
+            h = Math.max(48, w / ratio);
+          }
+        }
+        patchItem(d.id, { w, h });
       }
     },
     [patchItem, finishStroke]
@@ -752,7 +860,11 @@ export function CanvasBoard({ items, view, onChange }: Props) {
                     src={it.src}
                     alt=""
                     draggable={false}
-                    className="pointer-events-none h-full w-full rounded-xl object-cover"
+                    onLoad={(e) => {
+                      const img = e.currentTarget;
+                      onImageLoad(it.id, img.naturalWidth, img.naturalHeight);
+                    }}
+                    className="pointer-events-none h-full w-full rounded-xl object-contain"
                   />
                 ) : it.type === "sticky" ? (
                   <div

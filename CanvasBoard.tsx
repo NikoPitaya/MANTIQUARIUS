@@ -38,6 +38,7 @@ type Drag =
       iw: number;
       ih: number;
       lockAspect: boolean; // imagens mantêm a proporção ao escalar
+      ratio: number; // proporção original da imagem (iw/ih no início do arraste)
     }
   | null;
 
@@ -88,6 +89,23 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       commit(itemsRef.current.map((it) => (it.id === id ? { ...it, ...p } : it))),
     [commit]
   );
+
+  /** trava a proporção de imagens: o retângulo que contém a foto tem
+   * sempre a mesma proporção da imagem, em qualquer ponto do fluxo
+   * (arraste ao vivo, gravação no estado e re-hidratação de notas antigas) */
+  const enforceImageAspect = useCallback((it: CanvasItem): CanvasItem => {
+    if (it.type !== "image") return it;
+    // usa a proporção natural real da imagem como fonte da verdade;
+    // sem ela, mantém a proporção do próprio item
+    let ratio = it.imgRatio ?? (it.nw && it.nh ? it.nw / it.nh : undefined);
+    if (!ratio || !isFinite(ratio) || ratio <= 0) {
+      ratio = it.w && it.h ? it.w / it.h : 1;
+    }
+    const w = Math.max(64, it.w);
+    const h = w / ratio;
+    if (Math.abs(it.h - h) < 0.5 && it.w === w) return it;
+    return { ...it, w, h };
+  }, []);
 
   /** converte coordenadas da tela para coordenadas do quadro */
   const toWorld = useCallback((clientX: number, clientY: number) => {
@@ -140,6 +158,9 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       const c = centerWorld();
       addItem("image", {
         src,
+        nw,
+        nh,
+        imgRatio: nw / nh,
         w,
         h: Math.round((w * nh) / nw),
         x: Math.round(c.x - w / 2),
@@ -326,6 +347,8 @@ export function CanvasBoard({ items, view, onChange }: Props) {
           iw: it.w,
           ih: it.h,
           lockAspect: it.type === "image",
+          ratio:
+            it.imgRatio ?? (it.nw && it.nh ? it.nw / it.nh : it.h > 0 ? it.w / it.h : 1),
         };
         setLiveRect({ id: it.id, x: it.x, y: it.y, w: it.w, h: it.h });
         return;
@@ -421,17 +444,23 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       if (el) {
         let nw = Math.max(64, d.iw + dx / s);
         let nh = Math.max(48, d.ih + dy / s);
-        // imagens: mantém exatamente a proporção original ao escalar
-        if (d.lockAspect && d.ih > 0) {
-          const ratio = d.iw / d.ih;
-          // usa o arraste horizontal como base e deriva a altura dele —
-          // assim o retângulo que contém a imagem tem sempre a mesma proporção da foto
-          nw = Math.max(64, d.iw + dx / s);
-          nh = nw / ratio;
-          // garante altura mínima respeitando a proporção
-          if (nh < 48) {
-            nh = 48;
-            nw = nh * ratio;
+        // imagens: o retângulo que contém a foto acompanha SEMPRE a
+        // proporção original — nada de caixa livre que corta a imagem.
+        // usa o eixo de maior deslocamento relativo como base e deriva
+        // o outro dele; os mínimos são aplicados de forma proporcional.
+        if (d.lockAspect && d.ratio > 0 && isFinite(d.ratio)) {
+          const sx = dx / s;
+          const sy = dy / s;
+          if (Math.abs(sy) * d.ratio >= Math.abs(sx)) {
+            nh = Math.max(48, d.ih + sy);
+            nw = nh * d.ratio;
+          } else {
+            nw = Math.max(64, d.iw + sx);
+            nh = nw / d.ratio;
+            if (nh < 48) {
+              nh = 48;
+              nw = nh * d.ratio;
+            }
           }
         }
         el.style.width = `${nw}px`;

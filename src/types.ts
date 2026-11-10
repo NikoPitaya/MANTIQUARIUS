@@ -10,6 +10,9 @@ export interface CanvasItem {
   text?: string;
   color?: string;
   src?: string; // dataURL (image)
+  nw?: number; // largura natural (image)
+  nh?: number; // altura natural (image)
+  imgRatio?: number; // proporção natural nw/nh (image) — trava do resize
   fontSize?: number;
   d?: string; // svg path (draw)
   vw?: number; // viewbox original (draw)
