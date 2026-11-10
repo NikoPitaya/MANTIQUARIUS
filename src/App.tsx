@@ -18,14 +18,14 @@ import { AudioPanel } from "./components/AudioPanel";
 import { PdfPanel } from "./components/PdfPanel";
 import { VideoPanel } from "./components/VideoPanel";
 import { SaveModal } from "./components/SaveModal";
-import { NotebookPen, Dices, Music, FileText, Film, ChevronDown } from "lucide-react";
+import { NotebookPen, AppWindow, Music, FileText, Film, ChevronDown } from "lucide-react";
 import { lsGet, lsSet } from "./lib/store";
 
 const AUTOSAVE_KEY = "ordo:autosave";
 
 const MODULES = [
   { label: "notas", icon: NotebookPen },
-  { label: "owlbear", icon: Dices },
+  { label: "tabletop", icon: AppWindow },
   { label: "áudio", icon: Music },
   { label: "pdf", icon: FileText },
   { label: "vídeo", icon: Film },

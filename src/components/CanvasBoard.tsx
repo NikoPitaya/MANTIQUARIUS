@@ -141,6 +141,39 @@ export function CanvasBoard({ items, view, onChange }: Props) {
     [addItem, centerWorld]
   );
 
+  /*
+   * Ctrl+V precisa funcionar mesmo depois de clicar em botões da toolbar.
+   * Escutamos o paste na janela enquanto este canvas estiver visível, mas não
+   * interceptamos quando o usuário estiver escrevendo em input/textarea.
+   */
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const board = boardRef.current;
+      if (!board || board.getClientRects().length === 0) return;
+
+      const focused = document.activeElement as HTMLElement | null;
+      if (
+        focused instanceof HTMLInputElement ||
+        focused instanceof HTMLTextAreaElement ||
+        focused instanceof HTMLSelectElement ||
+        focused?.isContentEditable
+      ) {
+        return;
+      }
+
+      const file = Array.from(e.clipboardData?.items ?? [])
+        .find((item) => item.type.startsWith("image/"))
+        ?.getAsFile();
+      if (!file) return;
+
+      e.preventDefault();
+      void addImageFile(file);
+    };
+
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [addImageFile]);
+
   const removeItem = useCallback(
     (id: string) => {
       // apagar um item também remove as setas ligadas a ele
@@ -248,6 +281,12 @@ export function CanvasBoard({ items, view, onChange }: Props) {
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       const target = e.target as HTMLElement;
+
+      // O canvas recebe foco explicitamente porque os preventDefault usados no
+      // pan/desenho cancelam o foco automático normal do navegador.
+      if (!(target instanceof HTMLTextAreaElement) && !(target instanceof HTMLInputElement)) {
+        boardRef.current?.focus({ preventScroll: true });
+      }
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       // pinça com dois dedos
@@ -598,21 +637,17 @@ export function CanvasBoard({ items, view, onChange }: Props) {
       {/* área do quadro */}
       <div
         ref={boardRef}
+        tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onPaste={(e) => {
-          const f = Array.from(e.clipboardData?.items ?? [])
-            .find((i) => i.type.startsWith("image/"))?.getAsFile();
-          if (f) { e.preventDefault(); void addImageFile(f); }
-        }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
           if (f) { e.preventDefault(); void addImageFile(f); }
         }}
-        className={`canvas-board relative min-h-0 flex-1 overflow-hidden ${
+        className={`canvas-board relative min-h-0 flex-1 overflow-hidden outline-none ${
           tool === "pan" ? "cursor-grab" : tool === "draw" ? "cursor-crosshair" : "cursor-default"
         }`}
         style={{
