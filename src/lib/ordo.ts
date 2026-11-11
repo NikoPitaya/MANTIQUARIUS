@@ -71,6 +71,7 @@ const asMedia = (x: unknown): OrdoMedia | null => {
     volume: typeof m.volume === "number" ? m.volume : undefined,
     fadeIn: typeof m.fadeIn === "boolean" ? m.fadeIn : undefined,
     fadeOut: typeof m.fadeOut === "boolean" ? m.fadeOut : undefined,
+    loop: typeof m.loop === "boolean" ? m.loop : undefined,
   };
 };
 
@@ -171,6 +172,7 @@ interface BinaryMedia {
   volume?: number;
   fadeIn?: boolean;
   fadeOut?: boolean;
+  loop?: boolean;
 }
 
 interface BinaryManifest {
@@ -275,6 +277,7 @@ export const prepareOrdoExport = async (
           volume: media.volume,
           fadeIn: media.fadeIn,
           fadeOut: media.fadeOut,
+          loop: media.loop,
         });
         continue;
       }
@@ -306,6 +309,7 @@ export const prepareOrdoExport = async (
         volume: media.volume,
         fadeIn: media.fadeIn,
         fadeOut: media.fadeOut,
+        loop: media.loop,
       });
       blobParts.push(result.blob);
     }
@@ -414,6 +418,7 @@ const parseBinaryFile = async (file: File): Promise<OrdoDoc | null> => {
           volume: typeof media.volume === "number" ? media.volume : undefined,
           fadeIn: typeof media.fadeIn === "boolean" ? media.fadeIn : undefined,
           fadeOut: typeof media.fadeOut === "boolean" ? media.fadeOut : undefined,
+          loop: typeof media.loop === "boolean" ? media.loop : undefined,
         });
       }
       return result;

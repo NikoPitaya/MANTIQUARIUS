@@ -52,6 +52,7 @@ export interface OrdoMedia {
   volume?: number; // 0..1 — usado pelos sons de ambiente
   fadeIn?: boolean; // entrada suave (padrão: ligado)
   fadeOut?: boolean; // saída suave (padrão: ligado)
+  loop?: boolean; // repetição automática (padrão: ligada)
 }
 
 export interface OrdoDoc {

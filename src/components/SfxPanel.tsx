@@ -9,7 +9,7 @@ import { ContextMenuView, useContextMenu } from "./ContextMenu";
 import { lsGet, lsSet } from "../lib/store";
 import { useReorder } from "../lib/useReorder";
 import { ItemActions } from "./ItemActions";
-import { FadeToggles } from "./FadeToggles";
+import { FadeToggles, LoopToggle } from "./FadeToggles";
 import type { YTPlayer } from "../lib/youtube";
 import { parseYouTubeId, fetchYouTubeTitle, loadYouTubeAPI } from "../lib/youtube";
 
@@ -60,6 +60,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
     sfxRef.current.find((x) => x.id === id)?.fadeIn !== false;
   const wantsFadeOut = (id: string) =>
     sfxRef.current.find((x) => x.id === id)?.fadeOut !== false;
+  const wantsLoop = (media: OrdoMedia) => media.loop !== false;
 
   const { dragProps, markerCls, move } = useReorder(sfx, (next) => onChangeRef.current(next));
 
@@ -151,8 +152,16 @@ export function SfxPanel({ sfx, onChange }: Props) {
     const hit = els.current.get(m.id);
     if (hit) return hit;
     const a = new Audio(dataURLToObjectURL(m.data));
-    a.loop = true;
+    a.loop = wantsLoop(m);
     a.preload = "auto";
+    a.onended = () => {
+      fadeMul.current.set(m.id, 1);
+      setPlaying((prev) => {
+        const next = new Set(prev);
+        next.delete(m.id);
+        return next;
+      });
+    };
     els.current.set(m.id, a);
     return a;
   }, []);
@@ -190,6 +199,15 @@ export function SfxPanel({ sfx, onChange }: Props) {
           },
           onStateChange: (ev: { data: number }) => {
             if (ev.data === 0) {
+              if (!wantsLoop(sfxRef.current.find((x) => x.id === media.id) ?? media)) {
+                fadeMul.current.set(media.id, 1);
+                setPlaying((prev) => {
+                  const next = new Set(prev);
+                  next.delete(media.id);
+                  return next;
+                });
+                return;
+              }
               // terminou -> repete, mantendo o loop
               try {
                 player.seekTo(0, true);
@@ -427,6 +445,16 @@ export function SfxPanel({ sfx, onChange }: Props) {
     );
   }, []);
 
+  const toggleLoop = useCallback((id: string) => {
+    const next = sfxRef.current.map((x) =>
+      x.id === id ? { ...x, loop: x.loop === false } : x
+    );
+    onChangeRef.current(next);
+    const media = next.find((x) => x.id === id);
+    const audio = els.current.get(id);
+    if (media && audio) audio.loop = wantsLoop(media);
+  }, []);
+
   const commitRename = useCallback(() => {
     const id = renamingId;
     setRenamingId(null);
@@ -517,7 +545,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
 
                   <button
                     onClick={() => toggle(m.id)}
-                    title={on ? "parar" : "tocar em loop"}
+                    title={on ? "parar" : m.loop === false ? "tocar uma vez" : "tocar em loop"}
                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all active:scale-90 ${
                       on
                         ? "bg-acid-400 text-carbon-950 shadow-[0_0_16px_rgba(212,247,76,0.35)]"
@@ -554,7 +582,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
                       </span>
                       {on ? (
                         <span className="mt-0.5 flex items-center gap-1 font-mono text-[8.5px] font-semibold uppercase tracking-[0.2em] text-acid-400">
-                          <Repeat size={9} /> em loop
+                          {m.loop === false ? "reprodução única" : <><Repeat size={9} /> em loop</>}
                         </span>
                       ) : m.source === "youtube" ? (
                         <span className="mt-0.5 block font-mono text-[8.5px] font-semibold uppercase tracking-[0.2em] text-carbon-500">
@@ -572,6 +600,7 @@ export function SfxPanel({ sfx, onChange }: Props) {
                         onToggleIn={() => toggleFade(m.id, "fadeIn")}
                         onToggleOut={() => toggleFade(m.id, "fadeOut")}
                       />
+                      <LoopToggle loop={m.loop !== false} onToggle={() => toggleLoop(m.id)} />
                       <ItemActions
                         onRename={() => {
                           setRenamingId(m.id);
