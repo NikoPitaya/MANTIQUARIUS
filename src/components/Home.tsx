@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
-import { FilePlus2, FolderOpen, History, LoaderCircle, Hexagon, Trash2 } from "lucide-react";
+import { Download, FilePlus2, FolderOpen, History, LoaderCircle, Hexagon, Trash2 } from "lucide-react";
+
+const APP_DOWNLOAD_URL = "https://github.com/NikoPitaya/MANTIQUARIUS-app/releases/tag/v0.1.0";
 
 interface Props {
   onOpenFile: (file: File) => Promise<void>;
@@ -113,6 +115,18 @@ export function Home({
             </span>
           </span>
         </button>
+      </div>
+
+      <div className="anim-fade-up relative z-10 mt-4 w-full max-w-xl px-6" style={{ animationDelay: "0.25s" }}>
+        <a
+          href={APP_DOWNLOAD_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="group flex w-full items-center justify-center gap-3 rounded-2xl border border-acid-500/40 bg-acid-400/[0.09] px-5 py-3.5 text-sm font-semibold text-white transition-all hover:border-acid-400 hover:bg-acid-400/[0.14] active:scale-[0.985]"
+        >
+          <Download size={16} strokeWidth={2} className="text-acid-300 transition-transform group-hover:scale-105" />
+          <span>baixar aplicativo</span>
+        </a>
       </div>
 
       {autosaveInfo && (
